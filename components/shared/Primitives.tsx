@@ -1,9 +1,9 @@
 "use client";
 
-import { ReactNode } from "react";
+import { HTMLAttributes, ReactNode } from "react";
 
-export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <div className={`bg-white rounded-2xl border border-stone-200 shadow-sm ${className}`}>{children}</div>;
+export function Card({ children, className = "", ...rest }: { children: ReactNode; className?: string } & HTMLAttributes<HTMLDivElement>) {
+  return <div className={`bg-white rounded-2xl border border-stone-200 shadow-sm ${className}`} {...rest}>{children}</div>;
 }
 
 type Tone = "stone" | "teal" | "amber" | "rose" | "emerald";
