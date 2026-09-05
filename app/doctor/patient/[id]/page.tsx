@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ChevronLeft, FileText, Edit3, Check, CheckCircle2, RotateCcw, ShieldCheck, Code2 } from "lucide-react";
 import { Card, Badge } from "@/components/shared/Primitives";
@@ -8,6 +8,7 @@ import Button from "@/components/shared/Button";
 import FloatingNav from "@/components/shared/FloatingNav";
 import { useMediKioskStore } from "@/lib/data/store";
 import { toFhirBundle } from "@/lib/fhir/transformer";
+import { PatientRecord } from "@/types/patient";
 
 const TABS = ["overview", "history", "documents", "timeline", "summary", "consent"] as const;
 type Tab = (typeof TABS)[number];
@@ -16,21 +17,48 @@ export default function PatientDetailPage() {
   const router = useRouter();
   const params = useParams();
   const id = params?.id as string;
-  const queue = useMediKioskStore((s) => s.queue);
   const confirmSummary = useMediKioskStore((s) => s.confirmSummary);
   const regenerateSummary = useMediKioskStore((s) => s.regenerateSummary);
   const [tab, setTab] = useState<Tab>("overview");
   const [showFhir, setShowFhir] = useState(false);
+  const [p, setP] = useState<PatientRecord | null>(null);
+  const [notFound, setNotFound] = useState(false);
 
-  const p = queue.find((q) => q.id === id);
-  if (!p) {
+  async function loadPatient() {
+    const res = await fetch(`/api/patients/${id}`);
+    if (res.status === 404) {
+      setNotFound(true);
+      return;
+    }
+    const data = await res.json();
+    setP(data.patient);
+  }
+
+  useEffect(() => {
+    if (id) loadPatient();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+  async function handleConfirm() {
+    if (!p) return;
+    await confirmSummary(p.id);
+    loadPatient();
+  }
+  async function handleRegenerate() {
+    if (!p) return;
+    await regenerateSummary(p.id);
+    loadPatient();
+  }
+
+  if (notFound) {
     return (
       <div className="min-h-screen bg-stone-50 p-8">
         <FloatingNav />
-        <div className="text-sm text-stone-400">Patient not found in this session. <button onClick={() => router.push("/doctor")} className="text-teal-700 underline">Back to queue</button></div>
+        <div className="text-sm text-stone-400">Patient not found. <button onClick={() => router.push("/doctor")} className="text-teal-700 underline">Back to queue</button></div>
       </div>
     );
   }
+  if (!p) return null;
 
   return (
     <div className="min-h-screen bg-stone-50 p-6 lg:p-8">
@@ -131,8 +159,8 @@ export default function PatientDetailPage() {
             <div><span className="font-semibold">Previous Investigations: </span>{p.summary.investigations}</div>
           </div>
           <div className="flex gap-3">
-            <Button onClick={() => confirmSummary(p.id)} icon={CheckCircle2}>Confirm Summary</Button>
-            <Button variant="secondary" icon={RotateCcw} onClick={() => regenerateSummary(p.id)}>Regenerate</Button>
+            <Button onClick={handleConfirm} icon={CheckCircle2}>Confirm Summary</Button>
+            <Button variant="secondary" icon={RotateCcw} onClick={handleRegenerate}>Regenerate</Button>
           </div>
         </Card>
       )}

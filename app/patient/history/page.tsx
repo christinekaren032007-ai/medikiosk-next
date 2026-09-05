@@ -15,8 +15,10 @@ const STEPS = ["Identify", "Consent", "History", "Documents", "Review", "Complet
 
 export default function HistoryPage() {
   const router = useRouter();
+  const hydrated = useMediKioskStore((s) => s.hydrated);
   const draft = useMediKioskStore((s) => s.draft);
   const answerField = useMediKioskStore((s) => s.answerField);
+  const syncDraft = useMediKioskStore((s) => s.syncDraft);
   const ayushMode = useMediKioskStore((s) => s.ayushMode);
   const toggleAyush = useMediKioskStore((s) => s.toggleAyush);
   const [stepIndex, setStepIndex] = useState(0);
@@ -25,6 +27,7 @@ export default function HistoryPage() {
 
   const flow = useMemo(() => getFlow(ayushMode ? "ayush" : draft?.chiefComplaintCategory || "chest_pain"), [ayushMode, draft]);
 
+  if (!hydrated) return null;
   if (!draft) {
     router.replace("/patient");
     return null;
@@ -34,11 +37,13 @@ export default function HistoryPage() {
   const val = draft.answers[field.id];
   const redFlag = evaluateRedFlag(draft.chiefComplaintCategory, draft.answers);
 
-  function next() {
+  async function next() {
+    await syncDraft();
     if (stepIndex < flow.length - 1) setStepIndex((i) => i + 1);
     else router.push("/patient/documents");
   }
-  function prev() {
+  async function prev() {
+    await syncDraft();
     if (stepIndex > 0) setStepIndex((i) => i - 1);
     else router.push("/patient/consent");
   }

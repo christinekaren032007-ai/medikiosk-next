@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LayoutDashboard, FileWarning, ShieldCheck, BarChart3, Search, Bell, AlertTriangle } from "lucide-react";
 import { Card, Badge } from "@/components/shared/Primitives";
@@ -12,7 +12,18 @@ export default function DoctorDashboardPage() {
   const router = useRouter();
   const [tab, setTab] = useState<"dashboard" | "alerts">("dashboard");
   const queue = useMediKioskStore((s) => s.queue);
+  const fetchQueue = useMediKioskStore((s) => s.fetchQueue);
   const alerts = queue.filter((p) => p.redFlag.triggered);
+
+  useEffect(() => {
+    fetchQueue();
+    const iv = setInterval(fetchQueue, 5000);
+    window.addEventListener("focus", fetchQueue);
+    return () => {
+      clearInterval(iv);
+      window.removeEventListener("focus", fetchQueue);
+    };
+  }, [fetchQueue]);
 
   const nav = [
     { key: "dashboard" as const, label: "Dashboard", icon: LayoutDashboard },

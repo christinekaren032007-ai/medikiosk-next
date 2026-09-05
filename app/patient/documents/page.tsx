@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Upload, FileText, Camera, AlertTriangle, Loader2 } from "lucide-react";
 import { Card, Badge } from "@/components/shared/Primitives";
@@ -20,10 +21,12 @@ const STAGE_LABEL: Record<string, string> = {
 
 export default function DocumentsPage() {
   const router = useRouter();
+  const hydrated = useMediKioskStore((s) => s.hydrated);
   const draft = useMediKioskStore((s) => s.draft);
-  const setDocProcessingStage = useMediKioskStore((s) => s.setDocProcessingStage);
   const finishDocProcessing = useMediKioskStore((s) => s.finishDocProcessing);
+  const [stage, setStage] = useState<ProcessingStage>(null);
 
+  if (!hydrated) return null;
   if (!draft) {
     router.replace("/patient");
     return null;
@@ -31,13 +34,15 @@ export default function DocumentsPage() {
 
   function simulateScan() {
     const stages: ProcessingStage[] = [...PROCESSING_STAGES];
-    stages.forEach((stage, i) => {
-      setTimeout(() => setDocProcessingStage(stage), i * 700);
+    stages.forEach((s, i) => {
+      setTimeout(() => setStage(s), i * 700);
     });
-    setTimeout(() => finishDocProcessing(), stages.length * 700);
+    setTimeout(() => {
+      setStage("done");
+      finishDocProcessing();
+    }, stages.length * 700);
   }
 
-  const stage = draft.docProcessingStage;
   const doc = draft.documents[0];
 
   return (

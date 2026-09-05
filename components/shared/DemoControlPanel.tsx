@@ -12,8 +12,8 @@ export default function DemoControlPanel() {
   const loadScenario = useMediKioskStore((s) => s.loadScenario);
   const resetDemo = useMediKioskStore((s) => s.resetDemo);
 
-  function runScenario(key: "chest_pain" | "fever" | "diabetes" | "ayush") {
-    loadScenario(key);
+  async function runScenario(key: "chest_pain" | "fever" | "diabetes" | "ayush") {
+    await loadScenario(key);
     setOpen(false);
     router.push("/patient/review");
   }
@@ -41,7 +41,7 @@ export default function DemoControlPanel() {
             <Button variant="amber" className="text-xs px-2 py-2" onClick={() => runScenario("diabetes")}>Diabetes</Button>
             <Button variant="amber" className="text-xs px-2 py-2" onClick={() => runScenario("ayush")}>AYUSH</Button>
           </div>
-          <Button variant="secondary" className="w-full text-xs mb-2" onClick={() => { resetDemo(); setOpen(false); }}>Reset Demo</Button>
+          <Button variant="secondary" className="w-full text-xs mb-2" onClick={async () => { await resetDemo(); setOpen(false); }}>Reset Demo</Button>
           <div className="grid grid-cols-2 gap-2">
             <Button variant="ghost" className="text-xs px-2 py-2" onClick={() => { setOpen(false); router.push("/patient"); }}>Patient View</Button>
             <Button variant="ghost" className="text-xs px-2 py-2" onClick={() => { setOpen(false); router.push("/doctor"); }}>Doctor View</Button>

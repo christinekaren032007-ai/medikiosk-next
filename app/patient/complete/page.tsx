@@ -14,8 +14,8 @@ export default function CompletePage() {
   const resetDraft = useMediKioskStore((s) => s.resetDraft);
   const lang = useMediKioskStore((s) => s.lang);
 
-  function startOver() {
-    resetDraft();
+  async function startOver() {
+    await resetDraft();
     router.push("/patient");
   }
 

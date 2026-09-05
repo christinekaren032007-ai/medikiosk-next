@@ -14,11 +14,13 @@ const STEPS = ["Identify", "Consent", "History", "Documents", "Review", "Complet
 
 export default function ReviewPage() {
   const router = useRouter();
+  const hydrated = useMediKioskStore((s) => s.hydrated);
   const draft = useMediKioskStore((s) => s.draft);
   const ayushMode = useMediKioskStore((s) => s.ayushMode);
   const submitDraft = useMediKioskStore((s) => s.submitDraft);
   const lang = useMediKioskStore((s) => s.lang);
 
+  if (!hydrated) return null;
   if (!draft) {
     router.replace("/patient");
     return null;
@@ -26,9 +28,9 @@ export default function ReviewPage() {
 
   const flow = getFlow(ayushMode ? "ayush" : draft.chiefComplaintCategory);
 
-  function finish() {
-    submitDraft();
-    router.push("/patient/complete");
+  async function finish() {
+    const token = await submitDraft();
+    if (token) router.push("/patient/complete");
   }
 
   const sections: [string, string][] = [

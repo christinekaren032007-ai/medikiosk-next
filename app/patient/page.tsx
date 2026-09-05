@@ -19,8 +19,8 @@ export default function PatientStartPage() {
   const setIdentity = useMediKioskStore((s) => s.setIdentity);
   const draft = useMediKioskStore((s) => s.draft);
 
-  function begin() {
-    startPatient("chest_pain"); // default category; can change during history step in a fuller build
+  async function begin() {
+    await startPatient("chest_pain"); // default category; can change during history step in a fuller build
     setStage("identify");
   }
 

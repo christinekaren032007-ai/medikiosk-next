@@ -15,6 +15,7 @@ const STEPS = ["Identify", "Consent", "History", "Documents", "Review", "Complet
 export default function ConsentPage() {
   const router = useRouter();
   const lang = useMediKioskStore((s) => s.lang);
+  const hydrated = useMediKioskStore((s) => s.hydrated);
   const draft = useMediKioskStore((s) => s.draft);
   const [audioPlaying, setAudioPlaying] = useState(false);
   const [declined, setDeclined] = useState(false);
@@ -26,6 +27,7 @@ export default function ConsentPage() {
     if (!audioPlaying) timer.current = setTimeout(() => setAudioPlaying(false), 4000);
   }
 
+  if (!hydrated) return null;
   if (!draft) {
     router.replace("/patient");
     return null;

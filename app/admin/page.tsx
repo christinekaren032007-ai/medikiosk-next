@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
 import { Card } from "@/components/shared/Primitives";
 import FloatingNav from "@/components/shared/FloatingNav";
@@ -16,6 +17,18 @@ const INTAKE_TIME_DATA = [
 
 export default function AdminPage() {
   const queue = useMediKioskStore((s) => s.queue);
+  const fetchQueue = useMediKioskStore((s) => s.fetchQueue);
+
+  useEffect(() => {
+    fetchQueue();
+    const iv = setInterval(fetchQueue, 5000);
+    window.addEventListener("focus", fetchQueue);
+    return () => {
+      clearInterval(iv);
+      window.removeEventListener("focus", fetchQueue);
+    };
+  }, [fetchQueue]);
+
   const stats = [
     { label: "Patients Today", value: "247" },
     { label: "Average Intake", value: "6m 42s" },
