@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Lock, Stethoscope } from "lucide-react";
 import { Card } from "@/components/shared/Primitives";
 import Button from "@/components/shared/Button";
@@ -15,7 +15,6 @@ export default function DoctorLoginPage() {
 }
 
 function DoctorLoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -25,17 +24,22 @@ function DoctorLoginForm() {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    const res = await fetch("/api/doctor-login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password }),
-    });
-    setLoading(false);
-    if (!res.ok) {
-      setError("Incorrect password.");
-      return;
+    try {
+      const res = await fetch("/api/doctor-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
+      if (!res.ok) {
+        setError("Incorrect password.");
+        setLoading(false);
+        return;
+      }
+      window.location.href = searchParams.get("next") || "/doctor";
+    } catch {
+      setError("Couldn't reach the server. Check your connection and try again.");
+      setLoading(false);
     }
-    router.push(searchParams.get("next") || "/doctor");
   }
 
   return (
