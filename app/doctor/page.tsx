@@ -34,7 +34,7 @@ export default function DoctorDashboardPage() {
     <div className="min-h-screen bg-stone-50 flex">
       <FloatingNav />
       <div className="w-56 bg-white border-r border-stone-200 p-5 hidden md:block">
-        <div className="font-serif-display text-xl font-semibold text-teal-900 mb-1">MediKiosk</div>
+        <div className="font-serif-display text-xl font-semibold text-teal-900 mb-1">Rapha</div>
         <div className="text-xs text-stone-400 mb-8">Doctor Dashboard</div>
         <div className="space-y-1">
           {nav.map((n) => (
@@ -99,7 +99,7 @@ export default function DoctorDashboardPage() {
                 <div className="flex items-center gap-2 text-rose-600 font-semibold text-sm mb-2"><AlertTriangle size={16} /> HIGH PRIORITY</div>
                 <div className="font-semibold text-stone-800 mb-1">{p.name}</div>
                 <div className="text-sm text-stone-500 mb-3">{p.redFlag.reason}</div>
-                <p className="text-xs text-stone-400 mb-4">Possible emergency symptoms reported during intake. This is a simulation only — MediKiosk does not diagnose patients.</p>
+                <p className="text-xs text-stone-400 mb-4">Possible emergency symptoms reported during intake. This is a simulation only — Rapha does not diagnose patients.</p>
                 <Button variant="danger" onClick={() => router.push(`/doctor/patient/${p.id}`)}>Open Patient</Button>
               </Card>
             ))}

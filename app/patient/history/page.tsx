@@ -146,7 +146,7 @@ export default function HistoryPage() {
       <div className="max-w-6xl mx-auto">
         <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
           <div>
-            <div className="font-serif-display text-2xl font-semibold text-teal-900">MediKiosk</div>
+            <div className="font-serif-display text-2xl font-semibold text-teal-900">Rapha</div>
             <div className="text-xs text-stone-500">Clinical Intake Assistant</div>
           </div>
           <ProgressSteps steps={STEPS} activeIndex={2} />
@@ -177,7 +177,7 @@ export default function HistoryPage() {
           <Card className="p-6">
             {phase === "questions" && (
               <>
-                <div className="flex items-center gap-2 mb-4 text-xs text-teal-700 font-semibold"><Sparkles size={14} /> MediKiosk — clinical intake assistant</div>
+                <div className="flex items-center gap-2 mb-4 text-xs text-teal-700 font-semibold"><Sparkles size={14} /> Rapha — clinical intake assistant</div>
                 <h3 className="font-serif-display text-lg font-semibold text-stone-800 mb-5">{field.question}</h3>
 
                 {field.type === "choice" && (

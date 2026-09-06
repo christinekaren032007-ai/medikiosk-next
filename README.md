@@ -1,4 +1,4 @@
-# MediKiosk — Next.js Prototype
+# Rapha — Next.js Prototype
 
 AI-powered clinical intake platform for Indian hospital OPDs. Patient kiosk
 (voice + touch, adaptive interview, document digitization, red-flag

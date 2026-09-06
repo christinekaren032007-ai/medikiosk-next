@@ -39,7 +39,7 @@ export default function ConsentPage() {
       <div className="max-w-2xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <div className="font-serif-display text-2xl font-semibold text-teal-900">MediKiosk</div>
+            <div className="font-serif-display text-2xl font-semibold text-teal-900">Rapha</div>
             <div className="text-xs text-stone-500">Clinical Intake Assistant</div>
           </div>
           <ProgressSteps steps={STEPS} activeIndex={1} />

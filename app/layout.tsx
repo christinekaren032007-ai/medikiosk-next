@@ -3,7 +3,7 @@ import "./globals.css";
 import StoreHydration from "@/components/shared/StoreHydration";
 
 export const metadata: Metadata = {
-  title: "MediKiosk — AI Clinical Intake Platform",
+  title: "Rapha — AI Clinical Intake Platform",
   description: "Prototype — uses simulated patient data. Not for real clinical use.",
 };
 
