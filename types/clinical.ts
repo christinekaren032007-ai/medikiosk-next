@@ -11,6 +11,28 @@ export interface InterviewField {
 
 export type InterviewAnswers = Record<string, string | string[] | number | undefined>;
 
+export const FAMILY_CONDITIONS = [
+  "Diabetes",
+  "Hypertension",
+  "Heart disease",
+  "Asthma",
+  "Cancer",
+  "Kidney disease",
+  "Liver disease",
+  "Other",
+] as const;
+
+export interface FamilyHistoryEntry {
+  condition: string;
+  relation?: string;
+  details?: string;
+}
+
+export interface FollowUpQA {
+  question: string;
+  answer: string;
+}
+
 export interface ClinicalHistory {
   chiefComplaintCategory: ComplaintCategory;
   chiefComplaintLabel: string;
@@ -19,7 +41,9 @@ export interface ClinicalHistory {
   pastSurgicalHistory?: string;
   medications?: string;
   allergies?: string;
-  familyHistory?: string;
+  familyHistory?: FamilyHistoryEntry[];
+  noFamilyHistory?: boolean;
+  aiFollowUp?: FollowUpQA[];
   personalHistory?: string;
   reviewOfSystems?: string;
 }

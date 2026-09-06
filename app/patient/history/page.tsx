@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { UserCircle2, Sparkles, Mic, ChevronLeft, ChevronRight, AlertTriangle, PhoneCall } from "lucide-react";
+import { UserCircle2, Sparkles, Mic, ChevronLeft, ChevronRight, AlertTriangle, PhoneCall, Users, Loader2 } from "lucide-react";
 import { Card, Badge, ChipButton } from "@/components/shared/Primitives";
 import Button from "@/components/shared/Button";
 import ProgressSteps from "@/components/shared/ProgressSteps";
@@ -10,8 +10,11 @@ import FloatingNav from "@/components/shared/FloatingNav";
 import { useMediKioskStore } from "@/lib/data/store";
 import { getFlow } from "@/lib/ai/historyEngine";
 import { evaluateRedFlag } from "@/lib/ai/redFlagEngine";
+import { FAMILY_CONDITIONS, FollowUpQA } from "@/types/clinical";
 
 const STEPS = ["Identify", "Consent", "History", "Documents", "Review", "Complete"];
+const MAX_FOLLOW_UP = 3;
+const NO_FAMILY_HISTORY = "No known family medical history";
 
 export default function HistoryPage() {
   const router = useRouter();
@@ -21,11 +24,32 @@ export default function HistoryPage() {
   const syncDraft = useMediKioskStore((s) => s.syncDraft);
   const ayushMode = useMediKioskStore((s) => s.ayushMode);
   const toggleAyush = useMediKioskStore((s) => s.toggleAyush);
+  const setFamilyHistory = useMediKioskStore((s) => s.setFamilyHistory);
+  const fetchFollowUpQuestion = useMediKioskStore((s) => s.fetchFollowUpQuestion);
+  const answerFollowUp = useMediKioskStore((s) => s.answerFollowUp);
   const [stepIndex, setStepIndex] = useState(0);
   const [listening, setListening] = useState(false);
   const [staffCalled, setStaffCalled] = useState(false);
 
+  const [phase, setPhase] = useState<"questions" | "family" | "followup">("questions");
+  const [familySelected, setFamilySelected] = useState<string[]>([]);
+  const [familyDetails, setFamilyDetails] = useState<Record<string, string>>({});
+
+  const [followUpQuestion, setFollowUpQuestion] = useState<string | null>(null);
+  const [followUpAnswer, setFollowUpAnswer] = useState("");
+  const [followUpLoading, setFollowUpLoading] = useState(false);
+  const [followUpDone, setFollowUpDone] = useState(false);
+  const [followUpUnavailable, setFollowUpUnavailable] = useState(false);
+  const [followUpHistory, setFollowUpHistory] = useState<FollowUpQA[]>([]);
+
   const flow = useMemo(() => getFlow(ayushMode ? "ayush" : draft?.chiefComplaintCategory || "chest_pain"), [ayushMode, draft]);
+
+  useEffect(() => {
+    if (phase === "followup" && !followUpQuestion && !followUpLoading && !followUpDone) {
+      loadNextFollowUp();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, followUpDone, followUpQuestion]);
 
   if (!hydrated) return null;
   if (!draft) {
@@ -40,12 +64,54 @@ export default function HistoryPage() {
   async function next() {
     await syncDraft();
     if (stepIndex < flow.length - 1) setStepIndex((i) => i + 1);
-    else router.push("/patient/documents");
+    else setPhase("family");
   }
   async function prev() {
     await syncDraft();
     if (stepIndex > 0) setStepIndex((i) => i - 1);
     else router.push("/patient/consent");
+  }
+
+  function toggleFamilyCondition(condition: string) {
+    if (condition === NO_FAMILY_HISTORY) {
+      setFamilySelected([NO_FAMILY_HISTORY]);
+      return;
+    }
+    setFamilySelected((prev) => {
+      const withoutNone = prev.filter((c) => c !== NO_FAMILY_HISTORY);
+      return withoutNone.includes(condition) ? withoutNone.filter((c) => c !== condition) : [...withoutNone, condition];
+    });
+  }
+
+  async function continueFromFamily() {
+    const noFamilyHistory = familySelected.includes(NO_FAMILY_HISTORY);
+    const entries = noFamilyHistory
+      ? []
+      : familySelected.map((condition) => ({ condition, details: familyDetails[condition] || undefined }));
+    await setFamilyHistory(entries, noFamilyHistory);
+    setPhase("followup");
+  }
+
+  async function loadNextFollowUp() {
+    setFollowUpLoading(true);
+    setFollowUpUnavailable(false);
+    const question = await fetchFollowUpQuestion();
+    setFollowUpLoading(false);
+    if (!question) {
+      setFollowUpDone(true);
+      if (followUpHistory.length === 0) setFollowUpUnavailable(true);
+      return;
+    }
+    setFollowUpQuestion(question);
+  }
+
+  async function submitFollowUpAnswer() {
+    if (!followUpQuestion || !followUpAnswer.trim()) return;
+    await answerFollowUp(followUpQuestion, followUpAnswer.trim());
+    setFollowUpHistory((h) => [...h, { question: followUpQuestion, answer: followUpAnswer.trim() }]);
+    setFollowUpQuestion(null);
+    setFollowUpAnswer("");
+    if (followUpHistory.length + 1 >= MAX_FOLLOW_UP) setFollowUpDone(true);
   }
 
   function startVoice() {
@@ -104,56 +170,131 @@ export default function HistoryPage() {
           </Card>
 
           <Card className="p-6">
-            <div className="flex items-center gap-2 mb-4 text-xs text-teal-700 font-semibold"><Sparkles size={14} /> MediKiosk — clinical intake assistant</div>
-            <h3 className="font-serif-display text-lg font-semibold text-stone-800 mb-5">{field.question}</h3>
+            {phase === "questions" && (
+              <>
+                <div className="flex items-center gap-2 mb-4 text-xs text-teal-700 font-semibold"><Sparkles size={14} /> MediKiosk — clinical intake assistant</div>
+                <h3 className="font-serif-display text-lg font-semibold text-stone-800 mb-5">{field.question}</h3>
 
-            {field.type === "choice" && (
-              <div className="grid sm:grid-cols-2 gap-2 mb-6">
-                {field.options?.map((opt) => (
-                  <ChipButton key={opt} selected={val === opt} onClick={() => answerField(field.id, opt)}>{opt}</ChipButton>
-                ))}
-              </div>
-            )}
-            {field.type === "multi" && (
-              <div className="grid sm:grid-cols-2 gap-2 mb-6">
-                {field.options?.map((opt) => {
-                  const arr = (val as string[]) || [];
-                  const sel = arr.includes(opt);
-                  return (
-                    <ChipButton
-                      key={opt}
-                      selected={sel}
-                      onClick={() => {
-                        let nextVal: string[];
-                        if (opt === "None") nextVal = ["None"];
-                        else nextVal = sel ? arr.filter((a) => a !== opt) : [...arr.filter((a) => a !== "None"), opt];
-                        answerField(field.id, nextVal);
-                      }}
-                    >
-                      {opt}
-                    </ChipButton>
-                  );
-                })}
-              </div>
-            )}
-            {field.type === "slider" && (
-              <div className="mb-6">
-                <input type="range" min={0} max={10} value={(val as number) ?? 0} onChange={(e) => answerField(field.id, Number(e.target.value))} className="w-full" />
-                <div className="text-center font-serif-display text-3xl text-teal-800 mt-2">{(val as number) ?? 0}<span className="text-sm text-stone-400">/10</span></div>
-              </div>
+                {field.type === "choice" && (
+                  <div className="grid sm:grid-cols-2 gap-2 mb-6">
+                    {field.options?.map((opt) => (
+                      <ChipButton key={opt} selected={val === opt} onClick={() => answerField(field.id, opt)}>{opt}</ChipButton>
+                    ))}
+                  </div>
+                )}
+                {field.type === "multi" && (
+                  <div className="grid sm:grid-cols-2 gap-2 mb-6">
+                    {field.options?.map((opt) => {
+                      const arr = (val as string[]) || [];
+                      const sel = arr.includes(opt);
+                      return (
+                        <ChipButton
+                          key={opt}
+                          selected={sel}
+                          onClick={() => {
+                            let nextVal: string[];
+                            if (opt === "None") nextVal = ["None"];
+                            else nextVal = sel ? arr.filter((a) => a !== opt) : [...arr.filter((a) => a !== "None"), opt];
+                            answerField(field.id, nextVal);
+                          }}
+                        >
+                          {opt}
+                        </ChipButton>
+                      );
+                    })}
+                  </div>
+                )}
+                {field.type === "slider" && (
+                  <div className="mb-6">
+                    <input type="range" min={0} max={10} value={(val as number) ?? 0} onChange={(e) => answerField(field.id, Number(e.target.value))} className="w-full" />
+                    <div className="text-center font-serif-display text-3xl text-teal-800 mt-2">{(val as number) ?? 0}<span className="text-sm text-stone-400">/10</span></div>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-3 mb-4">
+                  <button onClick={startVoice} className={`w-11 h-11 rounded-full flex items-center justify-center text-white ${listening ? "bg-rose-600 animate-pulse" : "bg-teal-700"}`}>
+                    <Mic size={18} />
+                  </button>
+                  <span className="text-xs text-stone-400">{listening ? "Listening…" : "or choose an option / speak instead"}</span>
+                </div>
+
+                <div className="flex gap-3">
+                  <Button variant="secondary" icon={ChevronLeft} onClick={prev}>Back</Button>
+                  <Button icon={ChevronRight} disabled={val === undefined || val === ""} onClick={next} className="flex-1">Next</Button>
+                </div>
+              </>
             )}
 
-            <div className="flex items-center gap-3 mb-4">
-              <button onClick={startVoice} className={`w-11 h-11 rounded-full flex items-center justify-center text-white ${listening ? "bg-rose-600 animate-pulse" : "bg-teal-700"}`}>
-                <Mic size={18} />
-              </button>
-              <span className="text-xs text-stone-400">{listening ? "Listening…" : "or choose an option / speak instead"}</span>
-            </div>
+            {phase === "family" && (
+              <>
+                <div className="flex items-center gap-2 mb-4 text-xs text-teal-700 font-semibold"><Users size={14} /> Family medical history</div>
+                <h3 className="font-serif-display text-lg font-semibold text-stone-800 mb-2">Does anyone in your family have these conditions?</h3>
+                <p className="text-sm text-stone-500 mb-5">Select any that apply. This helps the doctor understand your background — it's optional.</p>
+                <div className="grid sm:grid-cols-2 gap-2 mb-4">
+                  {FAMILY_CONDITIONS.map((cond) => (
+                    <ChipButton key={cond} selected={familySelected.includes(cond)} onClick={() => toggleFamilyCondition(cond)}>{cond}</ChipButton>
+                  ))}
+                  <ChipButton selected={familySelected.includes(NO_FAMILY_HISTORY)} onClick={() => toggleFamilyCondition(NO_FAMILY_HISTORY)}>
+                    {NO_FAMILY_HISTORY}
+                  </ChipButton>
+                </div>
+                {familySelected.filter((c) => c !== NO_FAMILY_HISTORY).length > 0 && (
+                  <div className="space-y-2 mb-6">
+                    {familySelected.filter((c) => c !== NO_FAMILY_HISTORY).map((cond) => (
+                      <input
+                        key={cond}
+                        value={familyDetails[cond] || ""}
+                        onChange={(e) => setFamilyDetails((d) => ({ ...d, [cond]: e.target.value }))}
+                        placeholder={`${cond} — who, and any details (optional)`}
+                        className="w-full px-3 py-2 rounded-xl border border-stone-200 text-sm focus:outline-none focus:border-teal-400"
+                      />
+                    ))}
+                  </div>
+                )}
+                <div className="flex gap-3">
+                  <Button variant="secondary" icon={ChevronLeft} onClick={() => setPhase("questions")}>Back</Button>
+                  <Button icon={ChevronRight} disabled={familySelected.length === 0} onClick={continueFromFamily} className="flex-1">Continue</Button>
+                </div>
+              </>
+            )}
 
-            <div className="flex gap-3">
-              <Button variant="secondary" icon={ChevronLeft} onClick={prev}>Back</Button>
-              <Button icon={ChevronRight} disabled={val === undefined || val === ""} onClick={next} className="flex-1">Next</Button>
-            </div>
+            {phase === "followup" && (
+              <>
+                <div className="flex items-center gap-2 mb-4 text-xs text-teal-700 font-semibold"><Sparkles size={14} /> A few quick follow-up questions</div>
+                {followUpLoading && (
+                  <div className="p-8 text-center">
+                    <Loader2 size={24} className="mx-auto text-teal-700 animate-spin mb-3" />
+                    <div className="text-sm text-stone-500">Thinking of a helpful question…</div>
+                  </div>
+                )}
+                {!followUpLoading && followUpQuestion && (
+                  <>
+                    <h3 className="font-serif-display text-lg font-semibold text-stone-800 mb-5">{followUpQuestion}</h3>
+                    <input
+                      value={followUpAnswer}
+                      onChange={(e) => setFollowUpAnswer(e.target.value)}
+                      placeholder="Type your answer…"
+                      autoFocus
+                      className="w-full px-4 py-3 rounded-xl border border-stone-200 text-sm mb-6 focus:outline-none focus:border-teal-400"
+                    />
+                    <div className="flex gap-3">
+                      <Button variant="secondary" onClick={() => setFollowUpDone(true)}>Skip remaining questions</Button>
+                      <Button icon={ChevronRight} disabled={!followUpAnswer.trim()} onClick={submitFollowUpAnswer} className="flex-1">Next</Button>
+                    </div>
+                  </>
+                )}
+                {!followUpLoading && !followUpQuestion && followUpDone && (
+                  <>
+                    <p className="text-sm text-stone-600 mb-6">
+                      {followUpUnavailable
+                        ? "AI follow-up questions aren't available right now — you can continue with your intake as normal."
+                        : "That's all the follow-up questions for now."}
+                    </p>
+                    <Button icon={ChevronRight} onClick={() => router.push("/patient/documents")} className="w-full">Continue</Button>
+                  </>
+                )}
+              </>
+            )}
           </Card>
 
           <Card className="p-5 h-fit">

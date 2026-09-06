@@ -2,16 +2,19 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ChevronLeft, FileText, Edit3, Check, CheckCircle2, RotateCcw, ShieldCheck, Code2 } from "lucide-react";
+import { ChevronLeft, FileText, Edit3, Check, CheckCircle2, RotateCcw, ShieldCheck, Code2, Plus, Trash2, ClipboardPlus } from "lucide-react";
 import { Card, Badge } from "@/components/shared/Primitives";
 import Button from "@/components/shared/Button";
 import FloatingNav from "@/components/shared/FloatingNav";
 import { useMediKioskStore } from "@/lib/data/store";
 import { toFhirBundle } from "@/lib/fhir/transformer";
 import { PatientRecord } from "@/types/patient";
+import { Medicine } from "@/types/ai";
 
-const TABS = ["overview", "history", "documents", "timeline", "summary", "consent"] as const;
+const TABS = ["overview", "history", "documents", "timeline", "summary", "consultation", "consent"] as const;
 type Tab = (typeof TABS)[number];
+
+const EMPTY_MEDICINE: Medicine = { name: "", dosage: "", frequency: "", duration: "" };
 
 export default function PatientDetailPage() {
   const router = useRouter();
@@ -19,10 +22,18 @@ export default function PatientDetailPage() {
   const id = params?.id as string;
   const confirmSummary = useMediKioskStore((s) => s.confirmSummary);
   const regenerateSummary = useMediKioskStore((s) => s.regenerateSummary);
+  const saveConsultation = useMediKioskStore((s) => s.saveConsultation);
   const [tab, setTab] = useState<Tab>("overview");
   const [showFhir, setShowFhir] = useState(false);
   const [p, setP] = useState<PatientRecord | null>(null);
   const [notFound, setNotFound] = useState(false);
+
+  const [diagnosis, setDiagnosis] = useState("");
+  const [medicines, setMedicines] = useState<Medicine[]>([{ ...EMPTY_MEDICINE }]);
+  const [additionalInstructions, setAdditionalInstructions] = useState("");
+  const [doctorNotes, setDoctorNotes] = useState("");
+  const [savingConsultation, setSavingConsultation] = useState(false);
+  const [consultationSaved, setConsultationSaved] = useState(false);
 
   async function loadPatient() {
     const res = await fetch(`/api/patients/${id}`);
@@ -31,13 +42,45 @@ export default function PatientDetailPage() {
       return;
     }
     const data = await res.json();
-    setP(data.patient);
+    const patient: PatientRecord = data.patient;
+    setP(patient);
+    if (patient.consultation) {
+      setDiagnosis(patient.consultation.diagnosis);
+      setMedicines(patient.consultation.medicines.length ? patient.consultation.medicines : [{ ...EMPTY_MEDICINE }]);
+      setAdditionalInstructions(patient.consultation.additionalInstructions);
+      setDoctorNotes(patient.consultation.doctorNotes);
+    }
   }
 
   useEffect(() => {
     if (id) loadPatient();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  function updateMedicine(index: number, field: keyof Medicine, value: string) {
+    setMedicines((meds) => meds.map((m, i) => (i === index ? { ...m, [field]: value } : m)));
+  }
+  function addMedicine() {
+    setMedicines((meds) => [...meds, { ...EMPTY_MEDICINE }]);
+  }
+  function removeMedicine(index: number) {
+    setMedicines((meds) => (meds.length > 1 ? meds.filter((_, i) => i !== index) : meds));
+  }
+
+  async function handleCompleteConsultation() {
+    if (!p) return;
+    setSavingConsultation(true);
+    setConsultationSaved(false);
+    await saveConsultation(p.id, {
+      diagnosis,
+      medicines: medicines.filter((m) => m.name.trim() !== ""),
+      additionalInstructions,
+      doctorNotes,
+    });
+    setSavingConsultation(false);
+    setConsultationSaved(true);
+    await loadPatient();
+  }
 
   async function handleConfirm() {
     if (!p) return;
@@ -107,6 +150,35 @@ export default function PatientDetailPage() {
               <div className="flex gap-2 text-xs text-stone-400"><Edit3 size={13} className="cursor-pointer" /><Check size={13} className="cursor-pointer text-emerald-600" /></div>
             </div>
           ))}
+
+          <div className="pb-3">
+            <div className="text-xs text-stone-400 mb-1.5">Family Medical History</div>
+            {p.history.noFamilyHistory && <div className="text-sm text-stone-600">No known family medical history.</div>}
+            {!p.history.noFamilyHistory && (!p.history.familyHistory || p.history.familyHistory.length === 0) && (
+              <div className="text-sm text-stone-400 italic">Not reported.</div>
+            )}
+            {!!p.history.familyHistory?.length && (
+              <div className="flex flex-wrap gap-2">
+                {p.history.familyHistory.map((f, i) => (
+                  <Badge key={i} tone="stone">{f.condition}{f.details ? ` — ${f.details}` : ""}</Badge>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {!!p.history.aiFollowUp?.length && (
+            <div>
+              <div className="text-xs text-stone-400 mb-1.5">AI Follow-up Questions</div>
+              <div className="space-y-2">
+                {p.history.aiFollowUp.map((qa, i) => (
+                  <div key={i} className="text-sm">
+                    <div className="text-stone-500">{qa.question}</div>
+                    <div className="font-medium">{qa.answer}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </Card>
       )}
 
@@ -158,9 +230,84 @@ export default function PatientDetailPage() {
             <div><span className="font-semibold">Allergies: </span>{p.summary.allergies}</div>
             <div><span className="font-semibold">Previous Investigations: </span>{p.summary.investigations}</div>
           </div>
+
+          {p.summary.aiGenerated && p.summary.aiNarrative && (
+            <div className="mb-5 p-4 rounded-xl bg-teal-50 border border-teal-100">
+              <Badge tone="teal">AI-generated clinical summary based on patient-provided information. This is not a diagnosis.</Badge>
+              <p className="text-sm text-stone-700 mt-3 whitespace-pre-wrap">{p.summary.aiNarrative}</p>
+            </div>
+          )}
+
           <div className="flex gap-3">
             <Button onClick={handleConfirm} icon={CheckCircle2}>Confirm Summary</Button>
             <Button variant="secondary" icon={RotateCcw} onClick={handleRegenerate}>Regenerate</Button>
+          </div>
+        </Card>
+      )}
+
+      {tab === "consultation" && (
+        <Card className="p-5">
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <div className="font-semibold text-stone-800">Clinical Assessment &amp; Prescription</div>
+            {p.consultation && <Badge tone="emerald">Consultation completed at {new Date(p.consultation.completedAt).toLocaleString()}</Badge>}
+          </div>
+
+          <div className="mb-5">
+            <label className="text-xs font-semibold text-stone-500 mb-1.5 block">Diagnosis</label>
+            <textarea
+              value={diagnosis}
+              onChange={(e) => setDiagnosis(e.target.value)}
+              rows={2}
+              placeholder="Doctor's diagnosis…"
+              className="w-full px-3 py-2.5 rounded-xl border border-stone-200 text-sm focus:outline-none focus:border-teal-400"
+            />
+          </div>
+
+          <div className="mb-5">
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-semibold text-stone-500">Prescribed Medicines</label>
+              <button onClick={addMedicine} className="text-xs text-teal-700 font-semibold flex items-center gap-1"><Plus size={13} /> Add medicine</button>
+            </div>
+            <div className="space-y-2">
+              {medicines.map((med, i) => (
+                <div key={i} className="grid sm:grid-cols-[1.3fr_1fr_1fr_1fr_auto] gap-2 items-center">
+                  <input value={med.name} onChange={(e) => updateMedicine(i, "name", e.target.value)} placeholder="Medicine" className="px-3 py-2 rounded-lg border border-stone-200 text-sm focus:outline-none focus:border-teal-400" />
+                  <input value={med.dosage} onChange={(e) => updateMedicine(i, "dosage", e.target.value)} placeholder="Dosage" className="px-3 py-2 rounded-lg border border-stone-200 text-sm focus:outline-none focus:border-teal-400" />
+                  <input value={med.frequency} onChange={(e) => updateMedicine(i, "frequency", e.target.value)} placeholder="Frequency" className="px-3 py-2 rounded-lg border border-stone-200 text-sm focus:outline-none focus:border-teal-400" />
+                  <input value={med.duration} onChange={(e) => updateMedicine(i, "duration", e.target.value)} placeholder="Duration" className="px-3 py-2 rounded-lg border border-stone-200 text-sm focus:outline-none focus:border-teal-400" />
+                  <button onClick={() => removeMedicine(i)} className="text-stone-400 hover:text-rose-600 justify-self-center"><Trash2 size={15} /></button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="mb-5">
+            <label className="text-xs font-semibold text-stone-500 mb-1.5 block">Additional Instructions</label>
+            <textarea
+              value={additionalInstructions}
+              onChange={(e) => setAdditionalInstructions(e.target.value)}
+              rows={2}
+              placeholder="e.g. Take with food, follow up in 1 week…"
+              className="w-full px-3 py-2.5 rounded-xl border border-stone-200 text-sm focus:outline-none focus:border-teal-400"
+            />
+          </div>
+
+          <div className="mb-6">
+            <label className="text-xs font-semibold text-stone-500 mb-1.5 block">Doctor's Notes</label>
+            <textarea
+              value={doctorNotes}
+              onChange={(e) => setDoctorNotes(e.target.value)}
+              rows={2}
+              placeholder="Private notes for the record…"
+              className="w-full px-3 py-2.5 rounded-xl border border-stone-200 text-sm focus:outline-none focus:border-teal-400"
+            />
+          </div>
+
+          <div className="flex items-center gap-3">
+            <Button icon={ClipboardPlus} onClick={handleCompleteConsultation} disabled={savingConsultation || !diagnosis.trim()}>
+              {savingConsultation ? "Saving…" : "Complete Consultation"}
+            </Button>
+            {consultationSaved && <span className="text-sm text-emerald-600 font-medium">Saved ✓</span>}
           </div>
         </Card>
       )}

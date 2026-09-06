@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, unstable_after as after } from "next/server";
 import { supabaseServer } from "@/lib/supabase/server";
 import { buildSummary } from "@/lib/ai/summaryEngine";
 import { evaluateRedFlag } from "@/lib/ai/redFlagEngine";
+import { getClinicalNarrative } from "@/lib/ai/gemini";
 import { uid, nextToken } from "@/lib/utils/id";
 import { PatientRecord } from "@/types/patient";
 import { patientToRow } from "@/lib/server/patientMapping";
@@ -23,6 +24,9 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     chiefComplaintCategory: draft.chiefComplaintCategory,
     chiefComplaintLabel: draft.chiefComplaintLabel,
     answers: draft.answers,
+    familyHistory: draft.familyHistory || [],
+    noFamilyHistory: draft.noFamilyHistory || false,
+    aiFollowUp: draft.aiFollowUp || [],
   };
   const summary = buildSummary(history, draft.documents);
   const redFlag = evaluateRedFlag(draft.chiefComplaintCategory, draft.answers);
@@ -63,6 +67,23 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     .update({ draft: null, last_token: token, updated_at: new Date().toISOString() })
     .eq("id", id);
   if (sessionError) return NextResponse.json({ error: sessionError.message }, { status: 500 });
+
+  // AI narrative is a best-effort enrichment on top of the rule-based summary above
+  // (which already ran and was saved) — generated in the background after responding
+  // so the patient is never kept waiting on it, and never blocked if it fails.
+  after(async () => {
+    try {
+      const aiNarrative = await getClinicalNarrative({ history, documents: draft.documents });
+      if (aiNarrative) {
+        await supabaseServer
+          .from("patients")
+          .update({ summary: { ...summary, aiNarrative, aiGenerated: true } })
+          .eq("id", record.id);
+      }
+    } catch (err) {
+      console.error("[ai-narrative] background enrichment failed:", err);
+    }
+  });
 
   return NextResponse.json({ token });
 }

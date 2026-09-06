@@ -1,6 +1,6 @@
-import { ClinicalHistory } from "./clinical";
+import { ClinicalHistory, FamilyHistoryEntry, FollowUpQA } from "./clinical";
 import { DocumentRecord, TimelineEvent } from "./document";
-import { AISummary, RedFlag, DoctorReview } from "./ai";
+import { AISummary, RedFlag, DoctorReview, Consultation } from "./ai";
 
 export interface Patient {
   id: string;
@@ -35,6 +35,9 @@ export interface DraftPatient extends Patient {
   answers: import("./clinical").InterviewAnswers;
   documents: DocumentRecord[];
   docProcessingStage: import("./document").ProcessingStage;
+  familyHistory?: FamilyHistoryEntry[];
+  noFamilyHistory?: boolean;
+  aiFollowUp?: FollowUpQA[];
 }
 
 export interface PatientRecord extends Patient {
@@ -50,4 +53,5 @@ export interface PatientRecord extends Patient {
   aiStatus: AIStatus;
   status: QueueStatus;
   createdAt: string;
+  consultation?: Consultation | null;
 }

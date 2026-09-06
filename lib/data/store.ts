@@ -1,8 +1,9 @@
 "use client";
 
 import { create } from "zustand";
-import { ComplaintCategory } from "@/types/clinical";
+import { ComplaintCategory, FamilyHistoryEntry, FollowUpQA } from "@/types/clinical";
 import { DraftPatient, PatientRecord } from "@/types/patient";
+import { Consultation } from "@/types/ai";
 import { Lang } from "@/lib/i18n/translations";
 
 async function api<T = any>(url: string, init?: RequestInit): Promise<T> {
@@ -35,11 +36,16 @@ interface MediKioskState {
   submitDraft: () => Promise<string>;
   resetDraft: () => Promise<void>;
 
+  setFamilyHistory: (entries: FamilyHistoryEntry[], noFamilyHistory: boolean) => Promise<void>;
+  fetchFollowUpQuestion: () => Promise<string | null>;
+  answerFollowUp: (question: string, answer: string) => Promise<void>;
+
   loadScenario: (key: "chest_pain" | "fever" | "diabetes" | "ayush") => Promise<void>;
 
   fetchQueue: () => Promise<void>;
   confirmSummary: (patientId: string) => Promise<void>;
   regenerateSummary: (patientId: string) => Promise<void>;
+  saveConsultation: (patientId: string, consultation: Omit<Consultation, "completedAt">) => Promise<void>;
 
   resetDemo: () => Promise<void>;
 }
@@ -133,6 +139,39 @@ export const useMediKioskStore = create<MediKioskState>()((set, get) => ({
     if (sessionId) await api(`/api/session/${sessionId}/draft`, { method: "DELETE" });
   },
 
+  setFamilyHistory: async (entries, noFamilyHistory) => {
+    set((s) => (s.draft ? { draft: { ...s.draft, familyHistory: entries, noFamilyHistory } } : {}));
+    const sessionId = get().sessionId;
+    if (sessionId) await api(`/api/session/${sessionId}/draft`, { method: "PATCH", body: JSON.stringify({ familyHistory: entries, noFamilyHistory }) });
+  },
+
+  fetchFollowUpQuestion: async () => {
+    const draft = get().draft;
+    if (!draft) return null;
+    try {
+      const data = await api<{ question: string | null }>("/api/ai/follow-up", {
+        method: "POST",
+        body: JSON.stringify({
+          chiefComplaintLabel: draft.chiefComplaintLabel,
+          answers: draft.answers,
+          priorFollowUp: draft.aiFollowUp || [],
+        }),
+      });
+      return data.question;
+    } catch {
+      return null;
+    }
+  },
+
+  answerFollowUp: async (question, answer) => {
+    const draft = get().draft;
+    if (!draft) return;
+    const aiFollowUp: FollowUpQA[] = [...(draft.aiFollowUp || []), { question, answer }];
+    set({ draft: { ...draft, aiFollowUp } });
+    const sessionId = get().sessionId;
+    if (sessionId) await api(`/api/session/${sessionId}/draft`, { method: "PATCH", body: JSON.stringify({ aiFollowUp }) });
+  },
+
   loadScenario: async (key) => {
     const sessionId = get().sessionId;
     if (!sessionId) return;
@@ -156,6 +195,10 @@ export const useMediKioskStore = create<MediKioskState>()((set, get) => ({
   regenerateSummary: async (patientId) => {
     await api(`/api/patients/${patientId}/regenerate-summary`, { method: "POST" });
     await get().fetchQueue();
+  },
+
+  saveConsultation: async (patientId, consultation) => {
+    await api(`/api/patients/${patientId}/consultation`, { method: "PATCH", body: JSON.stringify(consultation) });
   },
 
   resetDemo: async () => {

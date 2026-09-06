@@ -19,6 +19,7 @@ export function rowToPatient(row: any): PatientRecord {
     aiStatus: row.ai_status,
     status: row.status,
     createdAt: row.created_at,
+    consultation: row.consultation ?? null,
   };
 }
 
