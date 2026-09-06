@@ -178,7 +178,8 @@ Respond with ONLY a JSON array, like: [{"name":"...","dosage":"...","frequency":
       frequency: String(m.frequency || ""),
       duration: String(m.duration || ""),
     }));
-  } catch {
+  } catch (err) {
+    console.error("[parse-prescription] error:", err);
     return null;
   }
 }

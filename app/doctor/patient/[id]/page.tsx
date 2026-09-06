@@ -41,6 +41,7 @@ export default function PatientDetailPage() {
   const [rxUncertain, setRxUncertain] = useState(false);
   const [rxFailed, setRxFailed] = useState(false);
   const [rxParsing, setRxParsing] = useState(false);
+  const [rxParseOutcome, setRxParseOutcome] = useState<"added" | "no-medicines-found" | null>(null);
 
   const [showNotesCanvas, setShowNotesCanvas] = useState(false);
   const [notesTranscription, setNotesTranscription] = useState<string | null>(null);
@@ -81,27 +82,38 @@ export default function PatientDetailPage() {
 
   async function confirmRxTranscription() {
     if (!rxTranscription?.trim()) return;
+    const confirmedText = rxTranscription.trim();
     setRxParsing(true);
+    setRxParseOutcome(null);
+    let parsed: Medicine[] | null = null;
     try {
       const res = await fetch("/api/ai/parse-prescription", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: rxTranscription }),
+        body: JSON.stringify({ text: confirmedText }),
       });
       const data = await res.json();
-      const parsed: Medicine[] | null = data.medicines;
-      if (parsed?.length) {
-        setMedicines((meds) => {
-          const withoutEmpty = meds.filter((m) => m.name.trim() !== "");
-          return [...withoutEmpty, ...parsed];
-        });
-      }
-    } finally {
-      setRxParsing(false);
-      setRxTranscription(null);
-      setRxUncertain(false);
-      setShowRxCanvas(false);
+      parsed = data.medicines;
+    } catch {
+      parsed = null;
     }
+    if (parsed?.length) {
+      setMedicines((meds) => {
+        const withoutEmpty = meds.filter((m) => m.name.trim() !== "");
+        return [...withoutEmpty, ...parsed!];
+      });
+      setRxParseOutcome("added");
+    } else {
+      // Never silently lose doctor-confirmed content: if it couldn't be
+      // structured into medicine rows, keep it visible in Additional
+      // Instructions instead of discarding it.
+      setAdditionalInstructions((prev) => (prev.trim() ? `${prev}\n${confirmedText}` : confirmedText));
+      setRxParseOutcome("no-medicines-found");
+    }
+    setRxParsing(false);
+    setRxTranscription(null);
+    setRxUncertain(false);
+    setShowRxCanvas(false);
   }
 
   function confirmNotesTranscription() {
@@ -328,6 +340,16 @@ export default function PatientDetailPage() {
                 </div>
               ))}
             </div>
+
+            {rxParseOutcome === "added" && (
+              <div className="text-xs text-emerald-600 font-medium mt-2">Medicine(s) added from your handwriting below — please review before saving.</div>
+            )}
+            {rxParseOutcome === "no-medicines-found" && (
+              <div className="flex items-start gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-2">
+                <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                Couldn't identify structured medicines (name/dosage/frequency/duration) from that text — your confirmed text was added to "Additional Instructions" below instead so nothing is lost. You can copy it into the medicine fields manually.
+              </div>
+            )}
 
             <div className="mt-3">
               {!showRxCanvas ? (
