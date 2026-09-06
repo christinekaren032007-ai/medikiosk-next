@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ChevronLeft, FileText, Edit3, Check, CheckCircle2, RotateCcw, ShieldCheck, Code2, Plus, Trash2, ClipboardPlus } from "lucide-react";
+import { ChevronLeft, FileText, Edit3, Check, CheckCircle2, RotateCcw, ShieldCheck, Code2, Plus, Trash2, ClipboardPlus, PenLine, AlertTriangle } from "lucide-react";
 import { Card, Badge } from "@/components/shared/Primitives";
 import Button from "@/components/shared/Button";
 import FloatingNav from "@/components/shared/FloatingNav";
+import HandwritingCanvas from "@/components/doctor/HandwritingCanvas";
 import { useMediKioskStore } from "@/lib/data/store";
 import { toFhirBundle } from "@/lib/fhir/transformer";
 import { PatientRecord } from "@/types/patient";
@@ -34,6 +35,17 @@ export default function PatientDetailPage() {
   const [doctorNotes, setDoctorNotes] = useState("");
   const [savingConsultation, setSavingConsultation] = useState(false);
   const [consultationSaved, setConsultationSaved] = useState(false);
+
+  const [showRxCanvas, setShowRxCanvas] = useState(false);
+  const [rxTranscription, setRxTranscription] = useState<string | null>(null);
+  const [rxUncertain, setRxUncertain] = useState(false);
+  const [rxFailed, setRxFailed] = useState(false);
+  const [rxParsing, setRxParsing] = useState(false);
+
+  const [showNotesCanvas, setShowNotesCanvas] = useState(false);
+  const [notesTranscription, setNotesTranscription] = useState<string | null>(null);
+  const [notesUncertain, setNotesUncertain] = useState(false);
+  const [notesFailed, setNotesFailed] = useState(false);
 
   async function loadPatient() {
     const res = await fetch(`/api/patients/${id}`);
@@ -65,6 +77,39 @@ export default function PatientDetailPage() {
   }
   function removeMedicine(index: number) {
     setMedicines((meds) => (meds.length > 1 ? meds.filter((_, i) => i !== index) : meds));
+  }
+
+  async function confirmRxTranscription() {
+    if (!rxTranscription?.trim()) return;
+    setRxParsing(true);
+    try {
+      const res = await fetch("/api/ai/parse-prescription", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: rxTranscription }),
+      });
+      const data = await res.json();
+      const parsed: Medicine[] | null = data.medicines;
+      if (parsed?.length) {
+        setMedicines((meds) => {
+          const withoutEmpty = meds.filter((m) => m.name.trim() !== "");
+          return [...withoutEmpty, ...parsed];
+        });
+      }
+    } finally {
+      setRxParsing(false);
+      setRxTranscription(null);
+      setRxUncertain(false);
+      setShowRxCanvas(false);
+    }
+  }
+
+  function confirmNotesTranscription() {
+    if (!notesTranscription?.trim()) return;
+    setDoctorNotes((prev) => (prev.trim() ? `${prev}\n${notesTranscription.trim()}` : notesTranscription.trim()));
+    setNotesTranscription(null);
+    setNotesUncertain(false);
+    setShowNotesCanvas(false);
   }
 
   async function handleCompleteConsultation() {
@@ -160,7 +205,11 @@ export default function PatientDetailPage() {
             {!!p.history.familyHistory?.length && (
               <div className="flex flex-wrap gap-2">
                 {p.history.familyHistory.map((f, i) => (
-                  <Badge key={i} tone="stone">{f.condition}{f.details ? ` — ${f.details}` : ""}</Badge>
+                  <Badge key={i} tone="stone">
+                    {f.condition}
+                    {f.relation ? ` (${f.relation})` : ""}
+                    {f.details ? ` — ${f.details}` : ""}
+                  </Badge>
                 ))}
               </div>
             )}
@@ -279,6 +328,63 @@ export default function PatientDetailPage() {
                 </div>
               ))}
             </div>
+
+            <div className="mt-3">
+              {!showRxCanvas ? (
+                <button onClick={() => setShowRxCanvas(true)} className="text-xs text-teal-700 font-semibold flex items-center gap-1">
+                  <PenLine size={13} /> Write prescription by hand instead
+                </button>
+              ) : (
+                <div className="p-3 rounded-xl bg-stone-50 border border-stone-200">
+                  <HandwritingCanvas
+                    onResult={(text, uncertain) => {
+                      setRxTranscription(text);
+                      setRxUncertain(uncertain);
+                      setRxFailed(text === null);
+                    }}
+                  />
+                  {rxFailed && (
+                    <div className="flex items-center gap-1.5 text-xs text-rose-600 mt-3">
+                      <AlertTriangle size={13} /> Couldn't read the handwriting — please try writing more clearly, or type it in manually below.
+                    </div>
+                  )}
+                  {rxTranscription !== null && (
+                    <div className="mt-3">
+                      <Badge tone="amber">AI-transcribed text — Please verify</Badge>
+                      {rxUncertain && (
+                        <div className="flex items-center gap-1.5 text-xs text-rose-600 mt-1.5">
+                          <AlertTriangle size={13} /> Some parts were unclear and are marked with [[double brackets]] — please correct them.
+                        </div>
+                      )}
+                      <textarea
+                        value={rxTranscription}
+                        onChange={(e) => setRxTranscription(e.target.value)}
+                        rows={3}
+                        className="w-full mt-2 px-3 py-2 rounded-lg border border-amber-300 bg-amber-50 text-sm focus:outline-none focus:border-amber-400"
+                      />
+                      <div className="flex gap-2 mt-2">
+                        <button
+                          onClick={confirmRxTranscription}
+                          disabled={rxParsing}
+                          className="text-xs bg-teal-700 text-white font-semibold px-3 py-1.5 rounded-lg disabled:opacity-40"
+                        >
+                          {rxParsing ? "Adding…" : "Confirm & Add to Prescription"}
+                        </button>
+                        <button
+                          onClick={() => { setRxTranscription(null); setRxUncertain(false); setRxFailed(false); }}
+                          className="text-xs text-stone-500 font-medium px-3 py-1.5"
+                        >
+                          Discard
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  <button onClick={() => { setShowRxCanvas(false); setRxTranscription(null); setRxFailed(false); }} className="text-xs text-stone-400 mt-3 block">
+                    Close handwriting input
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="mb-5">
@@ -301,6 +407,59 @@ export default function PatientDetailPage() {
               placeholder="Private notes for the record…"
               className="w-full px-3 py-2.5 rounded-xl border border-stone-200 text-sm focus:outline-none focus:border-teal-400"
             />
+
+            <div className="mt-3">
+              {!showNotesCanvas ? (
+                <button onClick={() => setShowNotesCanvas(true)} className="text-xs text-teal-700 font-semibold flex items-center gap-1">
+                  <PenLine size={13} /> Write notes by hand instead
+                </button>
+              ) : (
+                <div className="p-3 rounded-xl bg-stone-50 border border-stone-200">
+                  <HandwritingCanvas
+                    onResult={(text, uncertain) => {
+                      setNotesTranscription(text);
+                      setNotesUncertain(uncertain);
+                      setNotesFailed(text === null);
+                    }}
+                  />
+                  {notesFailed && (
+                    <div className="flex items-center gap-1.5 text-xs text-rose-600 mt-3">
+                      <AlertTriangle size={13} /> Couldn't read the handwriting — please try writing more clearly, or type it in manually below.
+                    </div>
+                  )}
+                  {notesTranscription !== null && (
+                    <div className="mt-3">
+                      <Badge tone="amber">AI-transcribed text — Please verify</Badge>
+                      {notesUncertain && (
+                        <div className="flex items-center gap-1.5 text-xs text-rose-600 mt-1.5">
+                          <AlertTriangle size={13} /> Some parts were unclear and are marked with [[double brackets]] — please correct them.
+                        </div>
+                      )}
+                      <textarea
+                        value={notesTranscription}
+                        onChange={(e) => setNotesTranscription(e.target.value)}
+                        rows={3}
+                        className="w-full mt-2 px-3 py-2 rounded-lg border border-amber-300 bg-amber-50 text-sm focus:outline-none focus:border-amber-400"
+                      />
+                      <div className="flex gap-2 mt-2">
+                        <button onClick={confirmNotesTranscription} className="text-xs bg-teal-700 text-white font-semibold px-3 py-1.5 rounded-lg">
+                          Confirm & Add to Notes
+                        </button>
+                        <button
+                          onClick={() => { setNotesTranscription(null); setNotesUncertain(false); setNotesFailed(false); }}
+                          className="text-xs text-stone-500 font-medium px-3 py-1.5"
+                        >
+                          Discard
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  <button onClick={() => { setShowNotesCanvas(false); setNotesTranscription(null); setNotesFailed(false); }} className="text-xs text-stone-400 mt-3 block">
+                    Close handwriting input
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="flex items-center gap-3">

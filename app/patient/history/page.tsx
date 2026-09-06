@@ -10,7 +10,7 @@ import FloatingNav from "@/components/shared/FloatingNav";
 import { useMediKioskStore } from "@/lib/data/store";
 import { getFlow } from "@/lib/ai/historyEngine";
 import { evaluateRedFlag } from "@/lib/ai/redFlagEngine";
-import { FAMILY_CONDITIONS, FollowUpQA } from "@/types/clinical";
+import { FAMILY_CONDITIONS, RELATION_OPTIONS, FollowUpQA } from "@/types/clinical";
 
 const STEPS = ["Identify", "Consent", "History", "Documents", "Review", "Complete"];
 const MAX_FOLLOW_UP = 3;
@@ -34,6 +34,7 @@ export default function HistoryPage() {
   const [phase, setPhase] = useState<"questions" | "family" | "followup">("questions");
   const [familySelected, setFamilySelected] = useState<string[]>([]);
   const [familyDetails, setFamilyDetails] = useState<Record<string, string>>({});
+  const [familyRelation, setFamilyRelation] = useState<Record<string, string>>({});
 
   const [followUpQuestion, setFollowUpQuestion] = useState<string | null>(null);
   const [followUpAnswer, setFollowUpAnswer] = useState("");
@@ -87,7 +88,11 @@ export default function HistoryPage() {
     const noFamilyHistory = familySelected.includes(NO_FAMILY_HISTORY);
     const entries = noFamilyHistory
       ? []
-      : familySelected.map((condition) => ({ condition, details: familyDetails[condition] || undefined }));
+      : familySelected.map((condition) => ({
+          condition,
+          relation: familyRelation[condition] || undefined,
+          details: familyDetails[condition] || undefined,
+        }));
     await setFamilyHistory(entries, noFamilyHistory);
     setPhase("followup");
   }
@@ -210,6 +215,18 @@ export default function HistoryPage() {
                     <div className="text-center font-serif-display text-3xl text-teal-800 mt-2">{(val as number) ?? 0}<span className="text-sm text-stone-400">/10</span></div>
                   </div>
                 )}
+                {field.type === "text" && (
+                  <div className="mb-6">
+                    <textarea
+                      value={(val as string) ?? ""}
+                      onChange={(e) => answerField(field.id, e.target.value)}
+                      rows={3}
+                      placeholder="Type your answer…"
+                      autoFocus
+                      className="w-full px-4 py-3 rounded-xl border border-stone-200 text-sm focus:outline-none focus:border-teal-400"
+                    />
+                  </div>
+                )}
 
                 <div className="flex items-center gap-3 mb-4">
                   <button onClick={startVoice} className={`w-11 h-11 rounded-full flex items-center justify-center text-white ${listening ? "bg-rose-600 animate-pulse" : "bg-teal-700"}`}>
@@ -241,13 +258,26 @@ export default function HistoryPage() {
                 {familySelected.filter((c) => c !== NO_FAMILY_HISTORY).length > 0 && (
                   <div className="space-y-2 mb-6">
                     {familySelected.filter((c) => c !== NO_FAMILY_HISTORY).map((cond) => (
-                      <input
-                        key={cond}
-                        value={familyDetails[cond] || ""}
-                        onChange={(e) => setFamilyDetails((d) => ({ ...d, [cond]: e.target.value }))}
-                        placeholder={`${cond} — who, and any details (optional)`}
-                        className="w-full px-3 py-2 rounded-xl border border-stone-200 text-sm focus:outline-none focus:border-teal-400"
-                      />
+                      <div key={cond} className="grid grid-cols-[auto_1fr] gap-2">
+                        <div className="text-xs font-semibold text-stone-500 self-center min-w-[110px]">{cond}</div>
+                        <select
+                          value={familyRelation[cond] || ""}
+                          onChange={(e) => setFamilyRelation((r) => ({ ...r, [cond]: e.target.value }))}
+                          className="px-3 py-2 rounded-xl border border-stone-200 text-sm focus:outline-none focus:border-teal-400 bg-white"
+                        >
+                          <option value="">Who? (optional)</option>
+                          {RELATION_OPTIONS.map((r) => (
+                            <option key={r} value={r}>{r}</option>
+                          ))}
+                        </select>
+                        <div />
+                        <input
+                          value={familyDetails[cond] || ""}
+                          onChange={(e) => setFamilyDetails((d) => ({ ...d, [cond]: e.target.value }))}
+                          placeholder="Any other details (optional)"
+                          className="px-3 py-2 rounded-xl border border-stone-200 text-sm focus:outline-none focus:border-teal-400"
+                        />
+                      </div>
                     ))}
                   </div>
                 )}

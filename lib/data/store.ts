@@ -155,6 +155,8 @@ export const useMediKioskStore = create<MediKioskState>()((set, get) => ({
           chiefComplaintLabel: draft.chiefComplaintLabel,
           answers: draft.answers,
           priorFollowUp: draft.aiFollowUp || [],
+          familyHistory: draft.familyHistory,
+          noFamilyHistory: draft.noFamilyHistory,
         }),
       });
       return data.question;

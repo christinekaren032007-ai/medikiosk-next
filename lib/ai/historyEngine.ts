@@ -3,10 +3,29 @@ import { ComplaintCategory, InterviewField } from "@/types/clinical";
 export const CHIEF_COMPLAINTS: { key: ComplaintCategory; label: string }[] = [
   { key: "chest_pain", label: "Chest pain" },
   { key: "fever", label: "Fever" },
+  { key: "cough", label: "Cough" },
+  { key: "headache", label: "Headache" },
+  { key: "abdominal_pain", label: "Abdominal pain" },
+  { key: "nausea_vomiting", label: "Nausea / Vomiting" },
+  { key: "breathlessness", label: "Breathing difficulty" },
+  { key: "injury_pain", label: "Injury / Pain" },
+  { key: "diarrhea", label: "Diarrhea" },
+  { key: "skin_problem", label: "Skin problem" },
   { key: "diabetes", label: "Follow-up / fatigue" },
   { key: "ayush", label: "General wellness (Ayurveda)" },
-  { key: "abdominal_pain", label: "Abdominal pain" },
-  { key: "breathlessness", label: "Breathlessness" },
+  { key: "other", label: "Other" },
+];
+
+/**
+ * Categories without a bespoke question tree below use this minimal flow —
+ * the rest of the conversation is carried by Gemini's adaptive follow-up
+ * questions (lib/ai/gemini.ts), which already tailor themselves to
+ * whatever chief complaint and answers they're given.
+ */
+const GENERIC_FLOW: InterviewField[] = [
+  { id: "description", type: "text", question: "Please briefly describe what's bothering you, in your own words." },
+  { id: "onset", type: "choice", question: "When did this start?", options: ["Today", "Yesterday", "2-3 days ago", "More than a week ago"] },
+  { id: "severity", type: "slider", question: "How severe would you say this is, from 0 to 10?" },
 ];
 
 /**
@@ -14,7 +33,7 @@ export const CHIEF_COMPLAINTS: { key: ComplaintCategory; label: string }[] = [
  * historyEngine.getFlow() is the single place UI components should read
  * from — never hard-code question screens in components.
  */
-export const FLOWS: Record<ComplaintCategory, InterviewField[]> = {
+export const FLOWS: Partial<Record<ComplaintCategory, InterviewField[]>> = {
   chest_pain: [
     { id: "onset", type: "choice", question: "When did the pain start?", options: ["Today", "Yesterday", "More than a week ago", "I don't know"] },
     { id: "location", type: "choice", question: "Where do you feel the pain?", options: ["Center of chest", "Left side", "Right side", "Upper chest", "Other"] },
@@ -69,7 +88,7 @@ export const FLOWS: Record<ComplaintCategory, InterviewField[]> = {
 };
 
 export function getFlow(category: ComplaintCategory): InterviewField[] {
-  return FLOWS[category];
+  return FLOWS[category] || GENERIC_FLOW;
 }
 
 export function isFlowComplete(category: ComplaintCategory, answers: Record<string, unknown>): boolean {

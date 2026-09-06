@@ -19,5 +19,5 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/doctor", "/doctor/:path*", "/api/patients/:path*"],
+  matcher: ["/doctor", "/doctor/:path*", "/api/patients/:path*", "/api/ai/transcribe", "/api/ai/parse-prescription"],
 };

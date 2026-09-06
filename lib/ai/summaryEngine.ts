@@ -34,6 +34,10 @@ export function buildSummary(history: ClinicalHistory, documents: DocumentRecord
   } else if (category === "breathlessness") {
     const assoc = (answers.associated as string[] | undefined)?.filter((a) => a !== "None") || [];
     hpi = `Patient reports breathlessness since ${String(answers.onset).toLowerCase()}, most noticeable ${String(answers.trigger).toLowerCase()}, severity ${answers.severity}/10${assoc.length ? `, associated with ${assoc.join(", ").toLowerCase()}` : ""}.`;
+  } else if (answers.description) {
+    const onset = answers.onset ? ` beginning ${String(answers.onset).toLowerCase()}` : "";
+    const severity = answers.severity !== undefined ? `, severity ${answers.severity}/10` : "";
+    hpi = `Patient reports: "${String(answers.description)}"${onset}${severity}.`;
   }
 
   const pastHistory = doc ? doc.fields.find((f) => f.key === "Diagnosis")?.value || "Not reported by patient." : "Not reported by patient.";

@@ -9,7 +9,18 @@ interface DocMockDef {
   fields: ExtractedField[];
 }
 
-const DOC_MOCKS: Record<ComplaintCategory, DocMockDef> = {
+const GENERIC_DOC_MOCK: DocMockDef = {
+  filename: "Lab_Report.pdf",
+  documentType: "Lab Report",
+  date: "12 Aug 2026",
+  fields: [
+    { key: "Diagnosis", value: "Not on record" },
+    { key: "Medications", value: "None reported" },
+    { key: "Procedures", value: "None" },
+  ],
+};
+
+const DOC_MOCKS: Partial<Record<ComplaintCategory, DocMockDef>> = {
   chest_pain: {
     filename: "Discharge_Summary.pdf",
     documentType: "Discharge Summary",
@@ -80,7 +91,7 @@ export const PROCESSING_STAGES = ["uploading", "ocr", "extracting", "organizing"
  * A real implementation would swap this for an OCR/vision API call.
  */
 export function mockExtractDocument(category: ComplaintCategory): DocumentRecord {
-  const mock = DOC_MOCKS[category];
+  const mock = DOC_MOCKS[category] || GENERIC_DOC_MOCK;
   return {
     id: uid(),
     filename: mock.filename,

@@ -3,15 +3,17 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Stethoscope, Mic, Hand, UserCircle2 } from "lucide-react";
-import { Card, Badge } from "@/components/shared/Primitives";
+import { Card, Badge, ChipButton } from "@/components/shared/Primitives";
 import Button from "@/components/shared/Button";
 import FloatingNav from "@/components/shared/FloatingNav";
 import { useMediKioskStore } from "@/lib/data/store";
 import { t } from "@/lib/i18n/translations";
+import { CHIEF_COMPLAINTS } from "@/lib/ai/historyEngine";
+import { ComplaintCategory } from "@/types/clinical";
 
 export default function PatientStartPage() {
   const router = useRouter();
-  const [stage, setStage] = useState<"welcome" | "identify">("welcome");
+  const [stage, setStage] = useState<"welcome" | "complaint" | "identify">("welcome");
   const [helpOpen, setHelpOpen] = useState(false);
   const lang = useMediKioskStore((s) => s.lang);
   const setLang = useMediKioskStore((s) => s.setLang);
@@ -19,8 +21,12 @@ export default function PatientStartPage() {
   const setIdentity = useMediKioskStore((s) => s.setIdentity);
   const draft = useMediKioskStore((s) => s.draft);
 
-  async function begin() {
-    await startPatient("chest_pain"); // default category; can change during history step in a fuller build
+  function begin() {
+    setStage("complaint");
+  }
+
+  async function pickComplaint(category: ComplaintCategory) {
+    await startPatient(category);
     setStage("identify");
   }
 
@@ -66,6 +72,19 @@ export default function PatientStartPage() {
             </div>
 
             <button onClick={() => setHelpOpen(true)} className="text-xs text-stone-400 underline">{t(lang, "needHelp")}</button>
+          </Card>
+        )}
+
+        {stage === "complaint" && (
+          <Card className="p-8">
+            <h2 className="font-serif-display text-xl font-semibold text-teal-900 mb-1">What brings you in today?</h2>
+            <p className="text-sm text-stone-500 mb-6">Select what best describes your main concern. This helps us ask the right questions.</p>
+            <div className="grid sm:grid-cols-2 gap-2 mb-6">
+              {CHIEF_COMPLAINTS.filter((c) => c.key !== "ayush").map((c) => (
+                <ChipButton key={c.key} selected={false} onClick={() => pickComplaint(c.key)}>{c.label}</ChipButton>
+              ))}
+            </div>
+            <Button variant="ghost" onClick={() => setStage("welcome")} className="w-full">Back</Button>
           </Card>
         )}
 

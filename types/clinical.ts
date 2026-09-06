@@ -1,6 +1,19 @@
-export type ComplaintCategory = "chest_pain" | "fever" | "diabetes" | "ayush" | "abdominal_pain" | "breathlessness";
+export type ComplaintCategory =
+  | "chest_pain"
+  | "fever"
+  | "diabetes"
+  | "ayush"
+  | "abdominal_pain"
+  | "breathlessness"
+  | "cough"
+  | "headache"
+  | "nausea_vomiting"
+  | "injury_pain"
+  | "diarrhea"
+  | "skin_problem"
+  | "other";
 
-export type InterviewFieldType = "choice" | "multi" | "slider";
+export type InterviewFieldType = "choice" | "multi" | "slider" | "text";
 
 export interface InterviewField {
   id: string;
@@ -21,6 +34,8 @@ export const FAMILY_CONDITIONS = [
   "Liver disease",
   "Other",
 ] as const;
+
+export const RELATION_OPTIONS = ["Mother", "Father", "Sibling", "Grandparent", "Other"] as const;
 
 export interface FamilyHistoryEntry {
   condition: string;
