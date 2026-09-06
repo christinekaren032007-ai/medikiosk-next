@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
     noFamilyHistory?: boolean;
   };
 
-  const question = await getFollowUpQuestion({
+  const result = await getFollowUpQuestion({
     chiefComplaintLabel,
     answers: answers || {},
     priorFollowUp: priorFollowUp || [],
@@ -21,5 +21,5 @@ export async function POST(req: NextRequest) {
     noFamilyHistory,
   });
 
-  return NextResponse.json({ question });
+  return NextResponse.json({ result });
 }

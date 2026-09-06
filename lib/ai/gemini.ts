@@ -1,6 +1,8 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { ClinicalHistory, FollowUpQA, FamilyHistoryEntry } from "@/types/clinical";
+import { ClinicalHistory, FollowUpQA, FamilyHistoryEntry, FollowUpQuestion, FollowUpResponseType } from "@/types/clinical";
 import { DocumentRecord } from "@/types/document";
+
+const VALID_RESPONSE_TYPES: FollowUpResponseType[] = ["single_choice", "multiple_choice", "free_text", "numeric_scale"];
 
 const MODEL = "gemini-3.6-flash";
 const TIMEOUT_MS = 15000;
@@ -48,7 +50,7 @@ export async function getFollowUpQuestion(params: {
   priorFollowUp: FollowUpQA[];
   familyHistory?: FamilyHistoryEntry[];
   noFamilyHistory?: boolean;
-}): Promise<string | null> {
+}): Promise<FollowUpQuestion | null> {
   const model = getModel();
   if (!model) return null;
   if (params.priorFollowUp.length >= MAX_FOLLOW_UP_QUESTIONS) return null;
@@ -68,15 +70,43 @@ Follow-up questions already asked and answered in this conversation: ${JSON.stri
 
 Ask ONE short, relevant follow-up question to gather more useful information for the doctor, based on what hasn't been covered yet. You may take family medical history into account if it's relevant to the chief complaint.
 Do not repeat a question already asked. Do not ask about anything unrelated to the chief complaint.
+
+Choose the response type that best fits the question:
+- "single_choice": the patient picks exactly one option (e.g. yes/no/not sure, a severity level, or a duration bucket)
+- "multiple_choice": the patient may pick more than one option (e.g. selecting several symptoms)
+- "numeric_scale": a 0-10 rating/severity style question
+- "free_text": only when there's no natural fixed set of options (e.g. "describe the pain in your own words")
+
 If you have gathered enough information already, respond with exactly: DONE
 
-Respond with ONLY the question text, or exactly the word DONE. No other text.`;
+Otherwise respond with ONLY a JSON object in exactly this shape, no markdown, no other text:
+{"question": "...", "responseType": "single_choice" | "multiple_choice" | "free_text" | "numeric_scale", "options": ["..."]}
+
+For "free_text" or "numeric_scale", "options" must be an empty array. Keep options short (a few words each) and offer at most 5.`;
 
   try {
     const result = await withTimeout(model.generateContent(prompt), TIMEOUT_MS);
     const text = result.response.text().trim();
     if (!text || text.toUpperCase() === "DONE") return null;
-    return text.replace(/^["']|["']$/g, "");
+
+    const cleaned = text.replace(/^```json\s*|```\s*$/g, "").trim();
+    try {
+      const parsed = JSON.parse(cleaned);
+      if (parsed && typeof parsed.question === "string" && parsed.question.trim()) {
+        const responseType: FollowUpResponseType = VALID_RESPONSE_TYPES.includes(parsed.responseType)
+          ? parsed.responseType
+          : "free_text";
+        const options = Array.isArray(parsed.options) ? parsed.options.filter((o: unknown) => typeof o === "string") : [];
+        return { question: parsed.question.trim(), responseType, options };
+      }
+    } catch {
+      // Not valid JSON — fall through to the backward-compatible plain-text path below.
+    }
+
+    // Backward compatible: if Gemini ever replies with a bare question string
+    // instead of the JSON shape, still show it as a normal free-text question
+    // rather than failing the whole follow-up flow.
+    return { question: text.replace(/^["']|["']$/g, ""), responseType: "free_text", options: [] };
   } catch {
     return null;
   }

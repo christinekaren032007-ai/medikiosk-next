@@ -10,7 +10,7 @@ import FloatingNav from "@/components/shared/FloatingNav";
 import { useMediKioskStore } from "@/lib/data/store";
 import { getFlow } from "@/lib/ai/historyEngine";
 import { evaluateRedFlag } from "@/lib/ai/redFlagEngine";
-import { FAMILY_CONDITIONS, RELATION_OPTIONS, FollowUpQA } from "@/types/clinical";
+import { FAMILY_CONDITIONS, RELATION_OPTIONS, FollowUpQA, FollowUpQuestion } from "@/types/clinical";
 
 const STEPS = ["Identify", "Consent", "History", "Documents", "Review", "Complete"];
 const MAX_FOLLOW_UP = 3;
@@ -36,8 +36,9 @@ export default function HistoryPage() {
   const [familyDetails, setFamilyDetails] = useState<Record<string, string>>({});
   const [familyRelation, setFamilyRelation] = useState<Record<string, string>>({});
 
-  const [followUpQuestion, setFollowUpQuestion] = useState<string | null>(null);
+  const [followUpQuestion, setFollowUpQuestion] = useState<FollowUpQuestion | null>(null);
   const [followUpAnswer, setFollowUpAnswer] = useState("");
+  const [followUpMultiSelected, setFollowUpMultiSelected] = useState<string[]>([]);
   const [followUpLoading, setFollowUpLoading] = useState(false);
   const [followUpDone, setFollowUpDone] = useState(false);
   const [followUpUnavailable, setFollowUpUnavailable] = useState(false);
@@ -110,12 +111,19 @@ export default function HistoryPage() {
     setFollowUpQuestion(question);
   }
 
+  function toggleFollowUpMultiOption(opt: string) {
+    setFollowUpMultiSelected((prev) => (prev.includes(opt) ? prev.filter((o) => o !== opt) : [...prev, opt]));
+  }
+
   async function submitFollowUpAnswer() {
-    if (!followUpQuestion || !followUpAnswer.trim()) return;
-    await answerFollowUp(followUpQuestion, followUpAnswer.trim());
-    setFollowUpHistory((h) => [...h, { question: followUpQuestion, answer: followUpAnswer.trim() }]);
+    if (!followUpQuestion) return;
+    const finalAnswer = followUpQuestion.responseType === "multiple_choice" ? followUpMultiSelected.join(", ") : followUpAnswer.trim();
+    if (!finalAnswer) return;
+    await answerFollowUp(followUpQuestion.question, finalAnswer);
+    setFollowUpHistory((h) => [...h, { question: followUpQuestion.question, answer: finalAnswer }]);
     setFollowUpQuestion(null);
     setFollowUpAnswer("");
+    setFollowUpMultiSelected([]);
     if (followUpHistory.length + 1 >= MAX_FOLLOW_UP) setFollowUpDone(true);
   }
 
@@ -299,17 +307,67 @@ export default function HistoryPage() {
                 )}
                 {!followUpLoading && followUpQuestion && (
                   <>
-                    <h3 className="font-serif-display text-lg font-semibold text-stone-800 mb-5">{followUpQuestion}</h3>
-                    <input
-                      value={followUpAnswer}
-                      onChange={(e) => setFollowUpAnswer(e.target.value)}
-                      placeholder="Type your answer…"
-                      autoFocus
-                      className="w-full px-4 py-3 rounded-xl border border-stone-200 text-sm mb-6 focus:outline-none focus:border-teal-400"
-                    />
+                    <h3 className="font-serif-display text-lg font-semibold text-stone-800 mb-5">{followUpQuestion.question}</h3>
+
+                    {followUpQuestion.responseType === "single_choice" && (
+                      <div className="grid sm:grid-cols-2 gap-2 mb-6">
+                        {followUpQuestion.options.map((opt) => (
+                          <ChipButton key={opt} selected={followUpAnswer === opt} onClick={() => setFollowUpAnswer(opt)}>{opt}</ChipButton>
+                        ))}
+                      </div>
+                    )}
+
+                    {followUpQuestion.responseType === "multiple_choice" && (
+                      <div className="grid sm:grid-cols-2 gap-2 mb-6">
+                        {followUpQuestion.options.map((opt) => (
+                          <ChipButton key={opt} selected={followUpMultiSelected.includes(opt)} onClick={() => toggleFollowUpMultiOption(opt)}>{opt}</ChipButton>
+                        ))}
+                      </div>
+                    )}
+
+                    {followUpQuestion.responseType === "numeric_scale" && (
+                      <div className="mb-6">
+                        <input
+                          type="range"
+                          min={0}
+                          max={10}
+                          value={followUpAnswer === "" ? 0 : Number(followUpAnswer)}
+                          onChange={(e) => setFollowUpAnswer(e.target.value)}
+                          className="w-full"
+                        />
+                        <div className="text-center font-serif-display text-3xl text-teal-800 mt-2">
+                          {followUpAnswer === "" ? 0 : Number(followUpAnswer)}
+                          <span className="text-sm text-stone-400">/10</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {followUpQuestion.responseType === "free_text" && (
+                      <input
+                        value={followUpAnswer}
+                        onChange={(e) => setFollowUpAnswer(e.target.value)}
+                        placeholder="Type your answer…"
+                        autoFocus
+                        className="w-full px-4 py-3 rounded-xl border border-stone-200 text-sm mb-6 focus:outline-none focus:border-teal-400"
+                      />
+                    )}
+
                     <div className="flex gap-3">
                       <Button variant="secondary" onClick={() => setFollowUpDone(true)}>Skip remaining questions</Button>
-                      <Button icon={ChevronRight} disabled={!followUpAnswer.trim()} onClick={submitFollowUpAnswer} className="flex-1">Next</Button>
+                      <Button
+                        icon={ChevronRight}
+                        disabled={
+                          followUpQuestion.responseType === "multiple_choice"
+                            ? followUpMultiSelected.length === 0
+                            : followUpQuestion.responseType === "numeric_scale"
+                              ? false
+                              : !followUpAnswer.trim()
+                        }
+                        onClick={submitFollowUpAnswer}
+                        className="flex-1"
+                      >
+                        Next
+                      </Button>
                     </div>
                   </>
                 )}

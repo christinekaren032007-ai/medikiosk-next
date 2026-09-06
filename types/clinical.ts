@@ -48,6 +48,20 @@ export interface FollowUpQA {
   answer: string;
 }
 
+/**
+ * Response type an AI-generated follow-up question can request, so the
+ * patient gets appropriate tap targets instead of always typing free text.
+ * The saved answer (FollowUpQA above) is unaffected — this only shapes how
+ * the question is PRESENTED before the answer is captured.
+ */
+export type FollowUpResponseType = "single_choice" | "multiple_choice" | "free_text" | "numeric_scale";
+
+export interface FollowUpQuestion {
+  question: string;
+  responseType: FollowUpResponseType;
+  options: string[];
+}
+
 export interface ClinicalHistory {
   chiefComplaintCategory: ComplaintCategory;
   chiefComplaintLabel: string;

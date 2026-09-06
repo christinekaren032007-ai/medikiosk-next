@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import { ComplaintCategory, FamilyHistoryEntry, FollowUpQA } from "@/types/clinical";
+import { ComplaintCategory, FamilyHistoryEntry, FollowUpQA, FollowUpQuestion } from "@/types/clinical";
 import { DraftPatient, PatientRecord } from "@/types/patient";
 import { Consultation } from "@/types/ai";
 import { Lang } from "@/lib/i18n/translations";
@@ -37,7 +37,7 @@ interface MediKioskState {
   resetDraft: () => Promise<void>;
 
   setFamilyHistory: (entries: FamilyHistoryEntry[], noFamilyHistory: boolean) => Promise<void>;
-  fetchFollowUpQuestion: () => Promise<string | null>;
+  fetchFollowUpQuestion: () => Promise<FollowUpQuestion | null>;
   answerFollowUp: (question: string, answer: string) => Promise<void>;
 
   loadScenario: (key: "chest_pain" | "fever" | "diabetes" | "ayush") => Promise<void>;
@@ -149,7 +149,7 @@ export const useMediKioskStore = create<MediKioskState>()((set, get) => ({
     const draft = get().draft;
     if (!draft) return null;
     try {
-      const data = await api<{ question: string | null }>("/api/ai/follow-up", {
+      const data = await api<{ result: FollowUpQuestion | null }>("/api/ai/follow-up", {
         method: "POST",
         body: JSON.stringify({
           chiefComplaintLabel: draft.chiefComplaintLabel,
@@ -159,7 +159,7 @@ export const useMediKioskStore = create<MediKioskState>()((set, get) => ({
           noFamilyHistory: draft.noFamilyHistory,
         }),
       });
-      return data.question;
+      return data.result;
     } catch {
       return null;
     }
