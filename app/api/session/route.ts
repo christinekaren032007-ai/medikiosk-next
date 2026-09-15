@@ -12,7 +12,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       sessionId: existing.id,
       lang: existing.lang,
-      ayushMode: existing.ayush_mode,
       draft: existing.draft,
       lastToken: existing.last_token,
     });
@@ -28,7 +27,6 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     sessionId: created.id,
     lang: created.lang,
-    ayushMode: created.ayush_mode,
     draft: created.draft,
     lastToken: created.last_token,
   });

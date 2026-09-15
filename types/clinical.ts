@@ -1,25 +1,31 @@
-export type ComplaintCategory =
-  | "chest_pain"
+// Chief complaints a patient can select (multiple allowed) — see problem
+// statement PS26047 section 5A. Intentionally NOT emergency-flavored
+// categories (no "chest pain" / "breathlessness" red-flag framing).
+export type ComplaintKey =
   | "fever"
-  | "diabetes"
-  | "ayush"
-  | "abdominal_pain"
-  | "breathlessness"
   | "cough"
   | "headache"
-  | "nausea_vomiting"
-  | "injury_pain"
-  | "diarrhea"
-  | "skin_problem"
+  | "joint_pain"
+  | "back_pain"
+  | "digestive"
+  | "skin"
+  | "menstrual"
+  | "fatigue"
+  | "sleep"
   | "other";
 
-export type InterviewFieldType = "choice" | "multi" | "slider" | "text";
+export type InterviewFieldType = "choice" | "multi" | "slider" | "text" | "yes_no";
+
+export type FlowSection = "hpi" | "ayush" | "lifestyle" | "medical_history";
 
 export interface InterviewField {
   id: string;
   type: InterviewFieldType;
   question: string;
+  /** Ayurvedic/technical term shown alongside the plain-language question, e.g. "Agni". */
+  technicalTerm?: string;
   options?: string[];
+  section: FlowSection;
 }
 
 export type InterviewAnswers = Record<string, string | string[] | number | undefined>;
@@ -43,36 +49,51 @@ export interface FamilyHistoryEntry {
   details?: string;
 }
 
-export interface FollowUpQA {
-  question: string;
-  answer: string;
-}
-
 /**
  * Response type an AI-generated follow-up question can request, so the
  * patient gets appropriate tap targets instead of always typing free text.
- * The saved answer (FollowUpQA above) is unaffected — this only shapes how
- * the question is PRESENTED before the answer is captured.
+ * Mirrors the structured schema in PS26047 section 8.
  */
-export type FollowUpResponseType = "single_choice" | "multiple_choice" | "free_text" | "numeric_scale";
+export type FollowUpResponseType = "yes_no" | "single_choice" | "multi_choice" | "slider" | "text";
 
 export interface FollowUpQuestion {
   question: string;
-  responseType: FollowUpResponseType;
+  type: FollowUpResponseType;
   options: string[];
+  /** Which part of the case this question is filling in, e.g. "History of Present Illness" or "Agni". */
+  section: string;
+  /**
+   * Why Gemini asked this — for practitioner-facing explainability only
+   * (PS26047 section 19). Never shown to the patient.
+   */
+  reason: string;
+}
+
+export interface FollowUpQA {
+  question: string;
+  answer: string;
+  type: FollowUpResponseType;
+  section: string;
+  reason: string;
+}
+
+export interface AharaViharaAnswers {
+  foodHabits?: string;
+  mealTiming?: string;
+  waterIntake?: string;
+  sleepPattern?: string;
+  physicalActivity?: string;
+  dailyRoutine?: string;
+  yogaMeditation?: string;
 }
 
 export interface ClinicalHistory {
-  chiefComplaintCategory: ComplaintCategory;
+  chiefComplaints: ComplaintKey[];
+  chiefComplaintOtherText?: string;
+  /** Display label built from the selected complaints, e.g. "Fever, Joint pain". */
   chiefComplaintLabel: string;
   answers: InterviewAnswers;
-  pastMedicalHistory?: string;
-  pastSurgicalHistory?: string;
-  medications?: string;
-  allergies?: string;
   familyHistory?: FamilyHistoryEntry[];
   noFamilyHistory?: boolean;
   aiFollowUp?: FollowUpQA[];
-  personalHistory?: string;
-  reviewOfSystems?: string;
 }

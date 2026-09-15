@@ -1,6 +1,6 @@
 import { ClinicalHistory, FamilyHistoryEntry, FollowUpQA } from "./clinical";
 import { DocumentRecord, TimelineEvent } from "./document";
-import { AISummary, RedFlag, DoctorReview, Consultation } from "./ai";
+import { CaseSheet, DoctorReview, Consultation, TreatmentFollowup } from "./ai";
 
 export interface Patient {
   id: string;
@@ -11,7 +11,6 @@ export interface Patient {
 }
 
 export type EncounterStatus = "in_progress" | "submitted";
-export type Priority = "normal" | "high";
 export type AIStatus = "processing" | "ready";
 export type QueueStatus = "Waiting" | "In Consultation" | "Completed";
 
@@ -22,15 +21,12 @@ export interface ConsentState {
 }
 
 /**
- * A full patient record as it lives in the doctor's queue —
- * everything captured during the kiosk flow, plus doctor-side state.
- */
-/**
  * A patient mid-way through the kiosk flow — not yet submitted to the
- * doctor's queue. Fields fill in progressively as screens complete.
+ * practitioner's case list. Fields fill in progressively as screens complete.
  */
 export interface DraftPatient extends Patient {
-  chiefComplaintCategory: import("./clinical").ComplaintCategory;
+  chiefComplaints: import("./clinical").ComplaintKey[];
+  chiefComplaintOtherText?: string;
   chiefComplaintLabel: string;
   answers: import("./clinical").InterviewAnswers;
   documents: DocumentRecord[];
@@ -40,18 +36,21 @@ export interface DraftPatient extends Patient {
   aiFollowUp?: FollowUpQA[];
 }
 
+/**
+ * A full patient case record as it lives in the practitioner's case list —
+ * everything captured during the kiosk flow, plus practitioner-side state.
+ */
 export interface PatientRecord extends Patient {
   token: string;
   history: ClinicalHistory;
   documents: DocumentRecord[];
   timeline: TimelineEvent[];
-  summary: AISummary;
-  redFlag: RedFlag;
+  caseSheet: CaseSheet;
   doctorReview: DoctorReview;
   consent: ConsentState;
-  priority: Priority;
   aiStatus: AIStatus;
   status: QueueStatus;
   createdAt: string;
   consultation?: Consultation | null;
+  treatmentFollowups?: TreatmentFollowup[];
 }

@@ -1,9 +1,10 @@
 "use client";
 
 import { create } from "zustand";
-import { ComplaintCategory, FamilyHistoryEntry, FollowUpQA, FollowUpQuestion } from "@/types/clinical";
+import { ComplaintKey, FamilyHistoryEntry, FollowUpQA, FollowUpQuestion } from "@/types/clinical";
 import { DraftPatient, PatientRecord } from "@/types/patient";
-import { Consultation } from "@/types/ai";
+import { Consultation, TreatmentFollowup } from "@/types/ai";
+import { DocumentRecord } from "@/types/document";
 import { Lang } from "@/lib/i18n/translations";
 
 async function api<T = any>(url: string, init?: RequestInit): Promise<T> {
@@ -15,64 +16,61 @@ async function api<T = any>(url: string, init?: RequestInit): Promise<T> {
   return res.json();
 }
 
-interface MediKioskState {
+interface RaphaState {
   sessionId: string | null;
   hydrated: boolean;
   lang: Lang;
-  ayushMode: boolean;
   queue: PatientRecord[];
   draft: DraftPatient | null;
   lastToken: string | null;
 
   initSession: () => Promise<void>;
   setLang: (lang: Lang) => void;
-  toggleAyush: () => void;
 
-  startPatient: (category: ComplaintCategory) => Promise<void>;
+  startPatient: (categories: ComplaintKey[], otherText?: string) => Promise<void>;
   setIdentity: (name: string, age: number, gender: "Male" | "Female", abhaId: string | null) => void;
   answerField: (fieldId: string, value: string | string[] | number) => void;
   syncDraft: () => Promise<void>;
-  finishDocProcessing: () => Promise<void>;
+  addDocument: (document: DocumentRecord) => Promise<void>;
   submitDraft: () => Promise<string>;
   resetDraft: () => Promise<void>;
 
   setFamilyHistory: (entries: FamilyHistoryEntry[], noFamilyHistory: boolean) => Promise<void>;
   fetchFollowUpQuestion: () => Promise<FollowUpQuestion | null>;
-  answerFollowUp: (question: string, answer: string) => Promise<void>;
+  answerFollowUp: (q: FollowUpQuestion, answer: string) => Promise<void>;
 
-  loadScenario: (key: "chest_pain" | "fever" | "diabetes" | "ayush") => Promise<void>;
+  loadScenario: (key: "fever" | "joint_pain" | "digestive" | "headache") => Promise<void>;
 
   fetchQueue: () => Promise<void>;
-  confirmSummary: (patientId: string) => Promise<void>;
-  regenerateSummary: (patientId: string) => Promise<void>;
+  confirmCaseSheet: (patientId: string) => Promise<void>;
+  regenerateCaseSheet: (patientId: string) => Promise<void>;
   saveConsultation: (patientId: string, consultation: Omit<Consultation, "completedAt">) => Promise<void>;
+  addTreatmentFollowup: (patientId: string, followup: Omit<TreatmentFollowup, "id" | "date">) => Promise<void>;
 
   resetDemo: () => Promise<void>;
 }
 
-export const useMediKioskStore = create<MediKioskState>()((set, get) => ({
+export const useRaphaStore = create<RaphaState>()((set, get) => ({
   sessionId: null,
   hydrated: false,
   lang: "en",
-  ayushMode: false,
   queue: [],
   draft: null,
   lastToken: null,
 
   initSession: async () => {
-    let sessionId = typeof window !== "undefined" ? localStorage.getItem("mk_session_id") : null;
+    let sessionId = typeof window !== "undefined" ? localStorage.getItem("rapha_session_id") : null;
     if (!sessionId) {
       sessionId = crypto.randomUUID();
-      if (typeof window !== "undefined") localStorage.setItem("mk_session_id", sessionId);
+      if (typeof window !== "undefined") localStorage.setItem("rapha_session_id", sessionId);
     }
-    const data = await api<{ sessionId: string; lang: Lang; ayushMode: boolean; draft: DraftPatient | null; lastToken: string | null }>(
+    const data = await api<{ sessionId: string; lang: Lang; draft: DraftPatient | null; lastToken: string | null }>(
       "/api/session",
       { method: "POST", body: JSON.stringify({ sessionId }) }
     );
     set({
       sessionId: data.sessionId,
       lang: data.lang,
-      ayushMode: data.ayushMode,
       draft: data.draft,
       lastToken: data.lastToken,
       hydrated: true,
@@ -85,19 +83,12 @@ export const useMediKioskStore = create<MediKioskState>()((set, get) => ({
     if (sessionId) api(`/api/session/${sessionId}`, { method: "PATCH", body: JSON.stringify({ lang }) }).catch(() => {});
   },
 
-  toggleAyush: () => {
-    const ayushMode = !get().ayushMode;
-    set({ ayushMode });
-    const sessionId = get().sessionId;
-    if (sessionId) api(`/api/session/${sessionId}`, { method: "PATCH", body: JSON.stringify({ ayushMode }) }).catch(() => {});
-  },
-
-  startPatient: async (category) => {
+  startPatient: async (categories, otherText) => {
     const sessionId = get().sessionId;
     if (!sessionId) return;
     const data = await api<{ draft: DraftPatient }>(`/api/session/${sessionId}/draft`, {
       method: "POST",
-      body: JSON.stringify({ category }),
+      body: JSON.stringify({ categories, otherText }),
     });
     set({ draft: data.draft });
   },
@@ -118,10 +109,13 @@ export const useMediKioskStore = create<MediKioskState>()((set, get) => ({
     await api(`/api/session/${sessionId}/draft`, { method: "PATCH", body: JSON.stringify({ answers: draft.answers }) });
   },
 
-  finishDocProcessing: async () => {
+  addDocument: async (document) => {
     const sessionId = get().sessionId;
     if (!sessionId) return;
-    const data = await api<{ draft: DraftPatient }>(`/api/session/${sessionId}/draft/finish-doc-processing`, { method: "POST" });
+    const data = await api<{ draft: DraftPatient }>(`/api/session/${sessionId}/draft/finish-doc-processing`, {
+      method: "POST",
+      body: JSON.stringify({ document }),
+    });
     set({ draft: data.draft });
   },
 
@@ -165,10 +159,10 @@ export const useMediKioskStore = create<MediKioskState>()((set, get) => ({
     }
   },
 
-  answerFollowUp: async (question, answer) => {
+  answerFollowUp: async (q, answer) => {
     const draft = get().draft;
     if (!draft) return;
-    const aiFollowUp: FollowUpQA[] = [...(draft.aiFollowUp || []), { question, answer }];
+    const aiFollowUp: FollowUpQA[] = [...(draft.aiFollowUp || []), { question: q.question, answer, type: q.type, section: q.section, reason: q.reason }];
     set({ draft: { ...draft, aiFollowUp } });
     const sessionId = get().sessionId;
     if (sessionId) await api(`/api/session/${sessionId}/draft`, { method: "PATCH", body: JSON.stringify({ aiFollowUp }) });
@@ -177,11 +171,11 @@ export const useMediKioskStore = create<MediKioskState>()((set, get) => ({
   loadScenario: async (key) => {
     const sessionId = get().sessionId;
     if (!sessionId) return;
-    const data = await api<{ draft: DraftPatient; ayushMode: boolean }>(`/api/session/${sessionId}/draft/scenario`, {
+    const data = await api<{ draft: DraftPatient }>(`/api/session/${sessionId}/draft/scenario`, {
       method: "POST",
       body: JSON.stringify({ key }),
     });
-    set({ draft: data.draft, ayushMode: data.ayushMode });
+    set({ draft: data.draft });
   },
 
   fetchQueue: async () => {
@@ -189,12 +183,12 @@ export const useMediKioskStore = create<MediKioskState>()((set, get) => ({
     set({ queue: data.queue });
   },
 
-  confirmSummary: async (patientId) => {
+  confirmCaseSheet: async (patientId) => {
     await api(`/api/patients/${patientId}/confirm-summary`, { method: "PATCH" });
     await get().fetchQueue();
   },
 
-  regenerateSummary: async (patientId) => {
+  regenerateCaseSheet: async (patientId) => {
     await api(`/api/patients/${patientId}/regenerate-summary`, { method: "POST" });
     await get().fetchQueue();
   },
@@ -203,12 +197,17 @@ export const useMediKioskStore = create<MediKioskState>()((set, get) => ({
     await api(`/api/patients/${patientId}/consultation`, { method: "PATCH", body: JSON.stringify(consultation) });
   },
 
+  addTreatmentFollowup: async (patientId, followup) => {
+    await api(`/api/patients/${patientId}/followup`, { method: "POST", body: JSON.stringify(followup) });
+    await get().fetchQueue();
+  },
+
   resetDemo: async () => {
     const sessionId = get().sessionId;
     const data = await api<{ queue: PatientRecord[] }>("/api/dev/reset", {
       method: "POST",
       body: JSON.stringify({ sessionId }),
     });
-    set({ queue: data.queue, draft: null, lastToken: null, ayushMode: false, lang: "en" });
+    set({ queue: data.queue, draft: null, lastToken: null, lang: "en" });
   },
 }));

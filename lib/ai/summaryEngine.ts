@@ -1,58 +1,66 @@
 import { ClinicalHistory } from "@/types/clinical";
 import { DocumentRecord } from "@/types/document";
-import { AISummary } from "@/types/ai";
-import { CHIEF_COMPLAINTS } from "@/lib/ai/historyEngine";
+import { CaseSheet } from "@/types/ai";
+
+function str(v: unknown, fallback = "Not reported."): string {
+  if (v === undefined || v === null || v === "") return fallback;
+  return Array.isArray(v) ? v.join(", ") : String(v);
+}
 
 /**
- * Builds a physician-ready draft summary from the patient's answers and
- * any digitized documents. This is always labelled as an AI-generated
- * draft requiring physician review — never presented as a diagnosis.
+ * Builds a practitioner-ready draft case sheet from the patient's answers
+ * and any digitized documents (PS26047 section 17). This organizes WHAT
+ * THE PATIENT SAID — it never infers a diagnosis and never fills in the
+ * Diagnosis/Treatment fields, which are practitioner-entered only.
  */
-export function buildSummary(history: ClinicalHistory, documents: DocumentRecord[]): AISummary {
-  const { chiefComplaintCategory: category, answers } = history;
-  const doc = documents[0];
+export function buildCaseSheet(history: ClinicalHistory, documents: DocumentRecord[]): CaseSheet {
+  const { answers } = history;
 
-  let hpi = "Not reported.";
-  if (category === "chest_pain") {
-    const assoc = (answers.associated as string[] | undefined)?.filter((a) => a !== "None") || [];
-    const radiation = answers.radiation as string | undefined;
-    hpi = `Patient reports ${String(answers.character).toLowerCase()}-like ${String(answers.location).toLowerCase()} pain beginning ${String(answers.onset).toLowerCase()}, severity ${answers.severity}/10${
-      radiation && radiation !== "No" ? `, radiating to the ${radiation.toLowerCase()}` : ""
-    }${assoc.length ? `, associated with ${assoc.join(", ").toLowerCase()}` : ""}.`;
-  } else if (category === "fever") {
-    const assoc = (answers.associated as string[] | undefined)?.filter((a) => a !== "None") || [];
-    hpi = `Patient reports fever for ${String(answers.onset).toLowerCase()}, intensity described as ${String(answers.intensity).toLowerCase()}${
-      assoc.length ? `, with ${assoc.join(", ").toLowerCase()}` : ""
-    }. Self-rated severity ${answers.severity}/10.`;
-  } else if (category === "diabetes") {
-    hpi = `Patient here for ${String(answers.reason).toLowerCase()}. Medication adherence: ${String(answers.adherence).toLowerCase()}. Diet control: ${String(answers.diet).toLowerCase()}. Energy level self-rated ${answers.severity}/10.`;
-  } else if (category === "ayush") {
-    hpi = `Patient presents for general wellness assessment. Prakriti assessed as ${String(answers.prakriti).split(" (")[1]?.replace(")", "") || "undetermined"}. Agni: ${String(answers.agni).toLowerCase()}. Koshtha: ${String(answers.koshtha).toLowerCase()}. Reported triggers: ${String(answers.nidana).toLowerCase()}.`;
-  } else if (category === "abdominal_pain") {
-    const assoc = (answers.associated as string[] | undefined)?.filter((a) => a !== "None") || [];
-    hpi = `Patient reports ${String(answers.character).toLowerCase()} pain in the ${String(answers.location).toLowerCase()}, beginning ${String(answers.onset).toLowerCase()}, severity ${answers.severity}/10${assoc.length ? `, with ${assoc.join(", ").toLowerCase()}` : ""}.`;
-  } else if (category === "breathlessness") {
-    const assoc = (answers.associated as string[] | undefined)?.filter((a) => a !== "None") || [];
-    hpi = `Patient reports breathlessness since ${String(answers.onset).toLowerCase()}, most noticeable ${String(answers.trigger).toLowerCase()}, severity ${answers.severity}/10${assoc.length ? `, associated with ${assoc.join(", ").toLowerCase()}` : ""}.`;
-  } else if (answers.description) {
-    const onset = answers.onset ? ` beginning ${String(answers.onset).toLowerCase()}` : "";
-    const severity = answers.severity !== undefined ? `, severity ${answers.severity}/10` : "";
-    hpi = `Patient reports: "${String(answers.description)}"${onset}${severity}.`;
-  }
+  const hpiParts: string[] = [];
+  if (answers.onset) hpiParts.push(`Onset: ${str(answers.onset)}`);
+  if (answers.location) hpiParts.push(`Location: ${str(answers.location)}`);
+  if (answers.character) hpiParts.push(`Character: ${str(answers.character)}`);
+  if (answers.severity !== undefined) hpiParts.push(`Self-rated severity: ${answers.severity}/10`);
+  if (answers.frequency) hpiParts.push(`Frequency: ${str(answers.frequency)}`);
+  if (answers.progression) hpiParts.push(`Progression: ${str(answers.progression)}`);
+  if (answers.aggravating) hpiParts.push(`Aggravating factors: ${str(answers.aggravating)}`);
+  if (answers.relieving) hpiParts.push(`Relieving factors: ${str(answers.relieving)}`);
+  if (answers.associatedSymptoms) hpiParts.push(`Associated symptoms: ${str(answers.associatedSymptoms)}`);
+  if (answers.previousEpisodes) hpiParts.push(`Previous episodes: ${str(answers.previousEpisodes)}`);
+  const hpi = hpiParts.length ? hpiParts.join(". ") + "." : "Not reported.";
 
-  const pastHistory = doc ? doc.fields.find((f) => f.key === "Diagnosis")?.value || "Not reported by patient." : "Not reported by patient.";
-  const medications = doc ? doc.fields.find((f) => f.key === "Medications")?.value || "None reported." : "None reported.";
-  const investigations = doc
-    ? doc.fields.filter((f) => !["Diagnosis", "Medications", "Procedures"].includes(f.key)).map((f) => `${f.key} — ${f.value}`).join("; ") || "None uploaded."
-    : "None uploaded.";
+  const aharaViharaParts: string[] = [];
+  if (answers.foodHabits) aharaViharaParts.push(`Diet: ${str(answers.foodHabits)}`);
+  if (answers.mealTiming) aharaViharaParts.push(`Meal timing: ${str(answers.mealTiming)}`);
+  if (answers.waterIntake) aharaViharaParts.push(`Water intake: ${str(answers.waterIntake)}`);
+  if (answers.sleepPattern) aharaViharaParts.push(`Sleep: ${str(answers.sleepPattern)}`);
+  if (answers.physicalActivity) aharaViharaParts.push(`Physical activity: ${str(answers.physicalActivity)}`);
+  if (answers.dailyRoutine) aharaViharaParts.push(`Daily routine: ${str(answers.dailyRoutine)}`);
+  if (answers.yogaMeditation) aharaViharaParts.push(`Yoga/meditation: ${str(answers.yogaMeditation)}`);
+  const aharaVihara = aharaViharaParts.length ? aharaViharaParts.join(". ") + "." : "Not reported.";
+
+  const documentsSummary = documents.length
+    ? documents
+        .map((d) => `${d.documentType}${d.date ? ` (${d.date})` : ""}: ${d.fields.map((f) => `${f.key} — ${f.value}`).join("; ") || "no fields extracted"}`)
+        .join(" | ")
+    : "No documents uploaded.";
 
   return {
-    chiefComplaint: `${CHIEF_COMPLAINTS.find((c) => c.key === category)?.label || "Not reported"}${category === "chest_pain" ? ` for ${String(answers.onset).toLowerCase()}` : ""}.`,
+    chiefComplaint: history.chiefComplaintLabel || "Not reported",
     hpi,
-    pastHistory,
-    medications,
-    allergies: "No known drug allergies reported.",
-    investigations,
+    ayush: {
+      prakriti: str(answers.prakriti),
+      vikriti: str(answers.vikriti),
+      agni: str(answers.agni),
+      kostha: str(answers.kostha),
+      aharaVihara,
+      nidana: str(answers.nidana),
+    },
+    medicalHistory: str(answers.pastConditions),
+    currentMedications: str(answers.currentMedications, "None reported."),
+    allergies: str(answers.allergies, "None reported."),
+    previousTreatment: str(answers.previousTreatment, "None reported."),
+    documentsSummary,
     generatedAt: new Date().toISOString(),
   };
 }

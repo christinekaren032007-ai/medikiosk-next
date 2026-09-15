@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
 import { Card } from "@/components/shared/Primitives";
 import FloatingNav from "@/components/shared/FloatingNav";
-import { useMediKioskStore } from "@/lib/data/store";
+import { useRaphaStore } from "@/lib/data/store";
 
 const VOLUME_DATA = [
   { day: "Mon", patients: 210 }, { day: "Tue", patients: 232 }, { day: "Wed", patients: 198 },
@@ -16,8 +16,8 @@ const INTAKE_TIME_DATA = [
 ];
 
 export default function AdminPage() {
-  const queue = useMediKioskStore((s) => s.queue);
-  const fetchQueue = useMediKioskStore((s) => s.fetchQueue);
+  const queue = useRaphaStore((s) => s.queue);
+  const fetchQueue = useRaphaStore((s) => s.fetchQueue);
 
   useEffect(() => {
     fetchQueue();
@@ -33,8 +33,7 @@ export default function AdminPage() {
     { label: "Patients Today", value: "247" },
     { label: "Average Intake", value: "6m 42s" },
     { label: "Documents Processed", value: "384" },
-    { label: "Summaries Ready", value: String(queue.filter((q) => q.aiStatus === "ready").length) },
-    { label: "Priority Alerts", value: String(queue.filter((q) => q.redFlag.triggered).length) },
+    { label: "Case Sheets Ready", value: String(queue.filter((q) => q.aiStatus === "ready").length) },
   ];
 
   return (

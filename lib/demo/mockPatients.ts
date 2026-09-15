@@ -1,11 +1,11 @@
 import { PatientRecord } from "@/types/patient";
 import { ClinicalHistory } from "@/types/clinical";
-import { CHIEF_COMPLAINTS } from "@/lib/ai/historyEngine";
+import { complaintLabel } from "@/lib/ai/historyEngine";
 import { mockExtractDocument } from "@/lib/ai/documentEngine";
-import { buildSummary } from "@/lib/ai/summaryEngine";
-import { evaluateRedFlag } from "@/lib/ai/redFlagEngine";
+import { buildCaseSheet } from "@/lib/ai/summaryEngine";
 import { uid } from "@/lib/utils/id";
 import { DocumentRecord, TimelineEvent } from "@/types/document";
+import { SCENARIOS } from "@/lib/demo/scenarios";
 
 function makeRecord(
   name: string,
@@ -16,9 +16,10 @@ function makeRecord(
   withDoc: boolean,
   extraTimeline: TimelineEvent[] = []
 ): PatientRecord {
-  const documents: DocumentRecord[] = withDoc ? [{ ...mockExtractDocument(history.chiefComplaintCategory), confirmed: true }] : [];
-  const summary = buildSummary(history, documents);
-  const redFlag = evaluateRedFlag(history.chiefComplaintCategory, history.answers);
+  const documents: DocumentRecord[] = withDoc
+    ? [{ ...mockExtractDocument(history.chiefComplaints[0]), reviewStatus: "confirmed", confirmed: true }]
+    : [];
+  const caseSheet = buildCaseSheet(history, documents);
   return {
     id: uid(),
     name,
@@ -29,49 +30,61 @@ function makeRecord(
     history,
     documents,
     timeline: [
-      { id: uid(), year: "2024", label: "Diabetes diagnosed" },
-      { id: uid(), year: "2025", label: "Hypertension documented" },
+      { id: uid(), year: "2024", label: "Ongoing condition documented" },
       ...extraTimeline,
     ],
-    summary,
-    redFlag,
+    caseSheet,
     doctorReview: { confirmed: false, edited: false, reviewer: null, timestamp: null },
     consent: { granted: true, timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), consentTextVersion: "v1" },
-    priority: redFlag.triggered ? "high" : "normal",
     aiStatus: "ready",
     status: "Waiting",
     createdAt: new Date().toISOString(),
+    treatmentFollowups: [],
   };
 }
 
+// Five clearly fictional demo patients spanning different chief complaints
+// (PS26047 section 27), pre-seeded on first load.
 export function seedPatients(): PatientRecord[] {
+  const fever = SCENARIOS.fever;
+  const jointPain = SCENARIOS.joint_pain;
+  const digestive = SCENARIOS.digestive;
+  const headache = SCENARIOS.headache;
+
   return [
     makeRecord(
-      "Ravi Kumar", 52, "Male", "A-127",
-      { chiefComplaintCategory: "chest_pain", chiefComplaintLabel: CHIEF_COMPLAINTS[0].label, answers: { onset: "Yesterday", location: "Center of chest", character: "Pressure", radiation: "Left arm", severity: 7, associated: ["Shortness of breath", "Sweating"] } },
+      jointPain.name, jointPain.age, jointPain.gender, "A-127",
+      { chiefComplaints: jointPain.keys, chiefComplaintLabel: complaintLabel(jointPain.keys), answers: jointPain.answers },
       true,
-      [{ id: uid(), year: "Aug 2026", label: "Discharge Summary uploaded" }]
+      [{ id: uid(), year: "Aug 2026", label: "Lab Report uploaded" }]
     ),
     makeRecord(
-      "Priya S", 31, "Female", "A-128",
-      { chiefComplaintCategory: "abdominal_pain", chiefComplaintLabel: "Abdominal pain", answers: { onset: "Yesterday", location: "Lower abdomen", character: "Cramping", severity: 4, associated: ["Nausea"] } },
+      digestive.name, digestive.age, digestive.gender, "A-128",
+      { chiefComplaints: digestive.keys, chiefComplaintLabel: complaintLabel(digestive.keys), answers: digestive.answers },
       false
     ),
     makeRecord(
-      "Arun K", 67, "Male", "A-129",
-      { chiefComplaintCategory: "fever", chiefComplaintLabel: "Fever", answers: { onset: "2-3 days", intensity: "High", associated: ["Chills", "Body ache"], severity: 5 } },
+      fever.name, fever.age, fever.gender, "A-129",
+      { chiefComplaints: fever.keys, chiefComplaintLabel: complaintLabel(fever.keys), answers: fever.answers },
       false
     ),
     makeRecord(
-      "Meena R", 39, "Female", "A-130",
-      { chiefComplaintCategory: "diabetes", chiefComplaintLabel: "Follow-up / fatigue", answers: { reason: "Feeling more tired than usual", adherence: "Sometimes miss a dose", diet: "Some lapses", severity: 4 } },
-      true
-    ),
-    makeRecord(
-      "Suresh P", 58, "Male", "A-131",
-      { chiefComplaintCategory: "breathlessness", chiefComplaintLabel: "Breathlessness", answers: { onset: "Gradually over weeks", trigger: "On exertion / walking", severity: 8, associated: ["Swelling in legs"] } },
+      headache.name, headache.age, headache.gender, "A-130",
+      { chiefComplaints: headache.keys, chiefComplaintLabel: complaintLabel(headache.keys), answers: headache.answers },
       true,
       [{ id: uid(), year: "Jun 2026", label: "Discharge Summary uploaded" }]
+    ),
+    makeRecord(
+      "Meena R", 39, "Female", "A-131",
+      { chiefComplaints: ["fatigue"], chiefComplaintLabel: complaintLabel(["fatigue"]), answers: {
+        onset: "More than 2 weeks ago", severity: 4, frequency: "Constant / ongoing", progression: "Staying the same",
+        associatedSymptoms: ["Sleep disturbance"], previousEpisodes: "Yes, this is ongoing / long-term",
+        prakriti: "Steady, calm, solid build (Kapha type)", vikriti: "More sluggish / heavy than usual",
+        agni: "Slow, heavy after meals", kostha: "Regular and well-formed", nidana: "Stress or irregular routine",
+        foodHabits: "Heavy, regular meals", sleepPattern: "Oversleeping / excessive sleep", physicalActivity: "Sedentary (little movement)",
+        pastConditions: "Type 2 diabetes", currentMedications: "Metformin 500 mg", allergies: "None known", previousTreatment: "None",
+      } },
+      true
     ),
   ];
 }

@@ -3,35 +3,35 @@
 import { useRouter } from "next/navigation";
 import {
   Stethoscope, PlayCircle, LayoutDashboard, Sparkles, Mic, FileText,
-  ClipboardList, AlertTriangle, ShieldCheck, Globe, Leaf, ArrowRight, BarChart3,
+  ClipboardList, ShieldCheck, Globe, Leaf, ArrowRight, BarChart3, ListChecks,
 } from "lucide-react";
 import { Card } from "@/components/shared/Primitives";
 import Button from "@/components/shared/Button";
 import DemoControlPanel from "@/components/shared/DemoControlPanel";
-import { useMediKioskStore } from "@/lib/data/store";
+import { useRaphaStore } from "@/lib/data/store";
 import { t } from "@/lib/i18n/translations";
 
 const FEATURES = [
-  { icon: Sparkles, label: "Conversational History", desc: "Adaptive AI-style interview, not a static form." },
-  { icon: Mic, label: "Voice + Touch Input", desc: "Speak naturally or tap through — patient's choice." },
-  { icon: FileText, label: "Medical Document Intelligence", desc: "Prior prescriptions and reports digitized on the spot." },
-  { icon: ClipboardList, label: "AI Clinical Summary", desc: "Physician-ready draft, always reviewed by a doctor." },
-  { icon: AlertTriangle, label: "Red-Flag Detection", desc: "Flags possible emergencies for immediate staff attention." },
-  { icon: Globe, label: "Multilingual Support", desc: "English, Tamil, and Hindi at the kiosk." },
-  { icon: Leaf, label: "AYUSH Mode", desc: "Trividha & Dashavidha Pariksha, patient-friendly." },
+  { icon: Leaf, label: "AYUSH Case-Taking", desc: "Prakriti, Vikriti, Agni, Kostha, and Ahara-Vihara, in plain language." },
+  { icon: Sparkles, label: "Adaptive AI Follow-ups", desc: "1-3 relevant questions at a time — never a generic chatbot." },
+  { icon: Mic, label: "Voice + Touch, in 3 languages", desc: "English, Tamil, and Hindi, with confirmation before anything is saved." },
+  { icon: FileText, label: "Medical Document Intelligence", desc: "Prior prescriptions and reports digitized, always patient-reviewed." },
+  { icon: ClipboardList, label: "Practitioner Case Sheet", desc: "Structured, editable, ready before the consultation begins." },
+  { icon: ListChecks, label: "Case Preparation", desc: "Shows how complete the case is — never a severity or risk score." },
+  { icon: Globe, label: "Multilingual by Design", desc: "Built for elderly, low-literacy, and regional-language patients." },
   { icon: ShieldCheck, label: "ABDM/FHIR Ready", desc: "Architecture designed for national health interoperability." },
 ];
-const PIPELINE = ["Patient", "AI Intake", "Document Intelligence", "Clinical Summary", "Doctor"];
+const PIPELINE = ["Patient", "AYUSH Case-Taking", "Document Intelligence", "Case Sheet", "Practitioner"];
 
 export default function LandingPage() {
   const router = useRouter();
-  const lang = useMediKioskStore((s) => s.lang);
+  const lang = useRaphaStore((s) => s.lang);
 
   return (
     <div className="min-h-screen bg-stone-50">
       <div className="max-w-5xl mx-auto px-6 pt-24 pb-16 text-center">
         <div className="inline-flex items-center gap-2 bg-teal-50 text-teal-800 text-xs font-semibold px-3 py-1.5 rounded-full mb-6">
-          <Stethoscope size={14} /> Prototype — SIH Demonstration
+          <Stethoscope size={14} /> Prototype — SIH 2026 · PS26047
         </div>
         <h1 className="font-serif-display text-5xl sm:text-6xl font-semibold text-teal-900 mb-4">{t(lang, "heroTitle")}</h1>
         <p className="text-lg text-stone-600 max-w-xl mx-auto mb-3">{t(lang, "heroSub")}</p>
@@ -65,6 +65,7 @@ export default function LandingPage() {
         <Button variant="ghost" onClick={() => router.push("/admin")} icon={BarChart3}>View Admin Analytics</Button>
       </div>
 
+      <div className="text-center text-xs text-stone-400 pb-2 px-4">Rapha is not an AI doctor and does not diagnose, triage, or prescribe — a qualified AYUSH practitioner makes all clinical decisions.</div>
       <div className="text-center text-xs text-stone-400 pb-10">Prototype — uses simulated patient data. Not for real clinical use.</div>
       <DemoControlPanel />
     </div>

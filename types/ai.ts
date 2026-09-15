@@ -1,10 +1,21 @@
-export interface AISummary {
+export interface AyushCaseInfo {
+  prakriti: string;
+  vikriti: string;
+  agni: string;
+  kostha: string;
+  aharaVihara: string;
+  nidana: string;
+}
+
+export interface CaseSheet {
   chiefComplaint: string;
   hpi: string;
-  pastHistory: string;
-  medications: string;
+  ayush: AyushCaseInfo;
+  medicalHistory: string;
+  currentMedications: string;
   allergies: string;
-  investigations: string;
+  previousTreatment: string;
+  documentsSummary: string;
   generatedAt: string;
   aiNarrative?: string;
   aiGenerated?: boolean;
@@ -25,14 +36,28 @@ export interface Consultation {
   completedAt: string;
 }
 
-export interface RedFlag {
-  triggered: boolean;
-  reason: string | null;
-}
-
 export interface DoctorReview {
   confirmed: boolean;
   edited: boolean;
   reviewer: string | null;
   timestamp: string | null;
+}
+
+export type TreatmentResponseStatus = "better" | "same" | "worse";
+
+export interface TreatmentFollowup {
+  id: string;
+  date: string;
+  status: TreatmentResponseStatus;
+  severity?: number;
+  newSymptoms?: string;
+  adherence?: string;
+  sideEffects?: string;
+}
+
+/** A single item the AI thinks may need practitioner clarification. Never a diagnosis or severity judgment. */
+export interface ClarificationItem {
+  id: string;
+  label: string;
+  section: string;
 }

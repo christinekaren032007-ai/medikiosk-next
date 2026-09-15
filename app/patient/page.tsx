@@ -6,27 +6,34 @@ import { Stethoscope, Mic, Hand, UserCircle2 } from "lucide-react";
 import { Card, Badge, ChipButton } from "@/components/shared/Primitives";
 import Button from "@/components/shared/Button";
 import FloatingNav from "@/components/shared/FloatingNav";
-import { useMediKioskStore } from "@/lib/data/store";
+import { useRaphaStore } from "@/lib/data/store";
 import { t } from "@/lib/i18n/translations";
 import { CHIEF_COMPLAINTS } from "@/lib/ai/historyEngine";
-import { ComplaintCategory } from "@/types/clinical";
+import { ComplaintKey } from "@/types/clinical";
 
 export default function PatientStartPage() {
   const router = useRouter();
   const [stage, setStage] = useState<"welcome" | "complaint" | "identify">("welcome");
   const [helpOpen, setHelpOpen] = useState(false);
-  const lang = useMediKioskStore((s) => s.lang);
-  const setLang = useMediKioskStore((s) => s.setLang);
-  const startPatient = useMediKioskStore((s) => s.startPatient);
-  const setIdentity = useMediKioskStore((s) => s.setIdentity);
-  const draft = useMediKioskStore((s) => s.draft);
+  const [selected, setSelected] = useState<ComplaintKey[]>([]);
+  const [otherText, setOtherText] = useState("");
+  const lang = useRaphaStore((s) => s.lang);
+  const setLang = useRaphaStore((s) => s.setLang);
+  const startPatient = useRaphaStore((s) => s.startPatient);
+  const setIdentity = useRaphaStore((s) => s.setIdentity);
+  const draft = useRaphaStore((s) => s.draft);
 
   function begin() {
     setStage("complaint");
   }
 
-  async function pickComplaint(category: ComplaintCategory) {
-    await startPatient(category);
+  function toggleComplaint(key: ComplaintKey) {
+    setSelected((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+  }
+
+  async function continueFromComplaint() {
+    if (!selected.length) return;
+    await startPatient(selected, selected.includes("other") ? otherText : undefined);
     setStage("identify");
   }
 
@@ -43,7 +50,7 @@ export default function PatientStartPage() {
       <div className="max-w-2xl mx-auto">
         <div className="mb-6">
           <div className="font-serif-display text-2xl font-semibold text-teal-900">Rapha</div>
-          <div className="text-xs text-stone-500">Clinical Intake Assistant</div>
+          <div className="text-xs text-stone-500">AYUSH Case-Taking Assistant</div>
         </div>
 
         {stage === "welcome" && (
@@ -77,14 +84,26 @@ export default function PatientStartPage() {
 
         {stage === "complaint" && (
           <Card className="p-8">
-            <h2 className="font-serif-display text-xl font-semibold text-teal-900 mb-1">What brings you in today?</h2>
-            <p className="text-sm text-stone-500 mb-6">Select what best describes your main concern. This helps us ask the right questions.</p>
-            <div className="grid sm:grid-cols-2 gap-2 mb-6">
-              {CHIEF_COMPLAINTS.filter((c) => c.key !== "ayush").map((c) => (
-                <ChipButton key={c.key} selected={false} onClick={() => pickComplaint(c.key)}>{c.label}</ChipButton>
+            <h2 className="font-serif-display text-xl font-semibold text-teal-900 mb-1">{t(lang, "complaintTitle")}</h2>
+            <p className="text-sm text-stone-500 mb-6">{t(lang, "complaintSub")}</p>
+            <div className="grid sm:grid-cols-2 gap-2 mb-4">
+              {CHIEF_COMPLAINTS.map((c) => (
+                <ChipButton key={c.key} selected={selected.includes(c.key)} onClick={() => toggleComplaint(c.key)}>{t(lang, `complaint_${c.key}`)}</ChipButton>
               ))}
             </div>
-            <Button variant="ghost" onClick={() => setStage("welcome")} className="w-full">Back</Button>
+            {selected.includes("other") && (
+              <input
+                value={otherText}
+                onChange={(e) => setOtherText(e.target.value)}
+                placeholder="Please describe…"
+                autoFocus
+                className="w-full px-4 py-3 rounded-xl border border-stone-200 text-sm mb-4 focus:outline-none focus:border-teal-400"
+              />
+            )}
+            <div className="flex gap-3">
+              <Button variant="secondary" onClick={() => setStage("welcome")}>{t(lang, "back")}</Button>
+              <Button className="flex-1" disabled={!selected.length} onClick={continueFromComplaint}>{t(lang, "continueLabel")}</Button>
+            </div>
           </Card>
         )}
 

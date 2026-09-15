@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
   if (sessionId) {
     await supabaseServer
       .from("kiosk_sessions")
-      .update({ draft: null, last_token: null, ayush_mode: false, lang: "en", updated_at: new Date().toISOString() })
+      .update({ draft: null, last_token: null, lang: "en", updated_at: new Date().toISOString() })
       .eq("id", sessionId);
   }
 

@@ -11,15 +11,14 @@ export function rowToPatient(row: any): PatientRecord {
     history: row.history,
     documents: row.documents,
     timeline: row.timeline,
-    summary: row.summary,
-    redFlag: row.red_flag,
+    caseSheet: row.case_sheet,
     doctorReview: row.doctor_review,
     consent: row.consent,
-    priority: row.priority,
     aiStatus: row.ai_status,
     status: row.status,
     createdAt: row.created_at,
     consultation: row.consultation ?? null,
+    treatmentFollowups: row.treatment_followups ?? [],
   };
 }
 
@@ -32,15 +31,14 @@ export function patientToRow(record: PatientRecord) {
     gender: record.gender,
     abha_id: record.abhaId,
     status: record.status,
-    priority: record.priority,
     ai_status: record.aiStatus,
     history: record.history,
     documents: record.documents,
     timeline: record.timeline,
-    summary: record.summary,
-    red_flag: record.redFlag,
+    case_sheet: record.caseSheet,
     doctor_review: record.doctorReview,
     consent: record.consent,
+    treatment_followups: record.treatmentFollowups ?? [],
     created_at: record.createdAt,
   };
 }

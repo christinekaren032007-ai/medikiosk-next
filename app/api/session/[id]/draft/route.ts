@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase/server";
-import { CHIEF_COMPLAINTS } from "@/lib/ai/historyEngine";
+import { complaintLabel } from "@/lib/ai/historyEngine";
 import { uid } from "@/lib/utils/id";
 import { DraftPatient } from "@/types/patient";
+import { ComplaintKey } from "@/types/clinical";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { category } = await req.json();
+  const { categories, otherText } = (await req.json()) as { categories: ComplaintKey[]; otherText?: string };
 
   const draft: DraftPatient = {
     id: uid(),
@@ -16,8 +17,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     age: "—",
     gender: "—",
     abhaId: null,
-    chiefComplaintCategory: category,
-    chiefComplaintLabel: CHIEF_COMPLAINTS.find((c) => c.key === category)?.label || category,
+    chiefComplaints: categories,
+    chiefComplaintOtherText: otherText,
+    chiefComplaintLabel: complaintLabel(categories, otherText),
     answers: {},
     documents: [],
     docProcessingStage: null,

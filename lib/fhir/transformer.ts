@@ -24,7 +24,7 @@ export function toFhirBundle(patient: PatientRecord) {
         resource: {
           resourceType: "Condition",
           subject: { reference: `Patient/${patient.id}` },
-          code: { text: patient.summary.pastHistory },
+          code: { text: patient.caseSheet.medicalHistory },
         },
       },
       {
@@ -33,14 +33,14 @@ export function toFhirBundle(patient: PatientRecord) {
           status: "preliminary",
           subject: { reference: `Patient/${patient.id}` },
           code: { text: "Chief Complaint" },
-          valueString: patient.summary.chiefComplaint,
+          valueString: patient.caseSheet.chiefComplaint,
         },
       },
       {
         resource: {
           resourceType: "MedicationStatement",
           subject: { reference: `Patient/${patient.id}` },
-          medicationCodeableConcept: { text: patient.summary.medications },
+          medicationCodeableConcept: { text: patient.caseSheet.currentMedications },
         },
       },
       ...patient.documents.map((doc) => ({

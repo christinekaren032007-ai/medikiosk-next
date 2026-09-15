@@ -1,26 +1,34 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { ClinicalHistory, FollowUpQA, FamilyHistoryEntry, FollowUpQuestion, FollowUpResponseType } from "@/types/clinical";
-import { DocumentRecord } from "@/types/document";
+import { ClinicalHistory, FollowUpQA, FamilyHistoryEntry, FollowUpQuestion, FollowUpResponseType, InterviewField } from "@/types/clinical";
+import { DocumentRecord, ExtractedField } from "@/types/document";
 
-const VALID_RESPONSE_TYPES: FollowUpResponseType[] = ["single_choice", "multiple_choice", "free_text", "numeric_scale"];
+const VALID_RESPONSE_TYPES: FollowUpResponseType[] = ["yes_no", "single_choice", "multi_choice", "slider", "text"];
 
 const MODEL = "gemini-3.6-flash";
+const VISION_MODEL = "gemini-3.6-flash";
 const TIMEOUT_MS = 15000;
 const NARRATIVE_TIMEOUT_MS = 18000;
 const TRANSCRIBE_TIMEOUT_MS = 25000;
+const EXTRACT_TIMEOUT_MS = 25000;
 export const MAX_FOLLOW_UP_QUESTIONS = 3;
 
-const SAFETY_RULES = `You are a clinical intake assistant helping gather information from a patient BEFORE they see a doctor.
-You must NEVER diagnose a disease, predict a diagnosis, prescribe medication, recommend medication, recommend treatment, or make any clinical decision.
-You only ask short, relevant follow-up questions to gather more information, or summarize information the patient has already provided.
-Never repeat a question that has already been answered.`;
+/**
+ * Hard safety boundary for every prompt in this file (PS26047 section 2).
+ * The AI only asks questions and organizes what the patient already said —
+ * it never diagnoses, triages, scores severity/risk, or recommends
+ * treatment/medication.
+ */
+const SAFETY_RULES = `You are Rapha, a clinical case-taking assistant for an AYUSH (Ayurveda/Yoga/Unani/Siddha/Homeopathy) outpatient setting. You gather and organize information from a patient BEFORE they see a practitioner.
+You must NEVER diagnose a disease or condition, predict a diagnosis, suggest a treatment, recommend or dose a medicine, generate a prescription, perform emergency triage, assign a severity/risk/priority score, or generate any red-flag/emergency alert.
+You only ask short, relevant follow-up questions to gather more information, or organize/summarize information the patient has already provided. Any uncertain or incomplete information must be labeled as such, never presented as confirmed fact.
+Never repeat a question that has already been answered. The practitioner makes all clinical decisions — you only help prepare the case for them.`;
 
-function getModel() {
+function getModel(modelName: string = MODEL) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return null;
   try {
     const genAI = new GoogleGenerativeAI(apiKey);
-    return genAI.getGenerativeModel({ model: MODEL });
+    return genAI.getGenerativeModel({ model: modelName });
   } catch {
     return null;
   }
@@ -38,8 +46,12 @@ async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   }
 }
 
+function stripCodeFence(text: string): string {
+  return text.replace(/^```json\s*|^```\s*|```\s*$/g, "").trim();
+}
+
 /**
- * Returns the next adaptive follow-up question, or null if Gemini is
+ * Returns the next adaptive AYUSH follow-up question, or null if Gemini is
  * unavailable, errors, times out, or has gathered enough information.
  * Callers must treat null as "no AI question available" and let the
  * patient continue — never block the intake flow on this.
@@ -63,60 +75,61 @@ export async function getFollowUpQuestion(params: {
 
   const prompt = `${SAFETY_RULES}
 
-Chief complaint: ${params.chiefComplaintLabel}
-Information already collected from the structured intake form: ${JSON.stringify(params.answers)}
+Chief complaint(s): ${params.chiefComplaintLabel}
+Structured intake answers so far (includes History of Present Illness, AYUSH case information — Prakriti/Vikriti/Agni/Kostha/Nidana —, Ahara-Vihara lifestyle info, and relevant medical history): ${JSON.stringify(params.answers)}
 Family medical history: ${familyHistoryText}
 Follow-up questions already asked and answered in this conversation: ${JSON.stringify(params.priorFollowUp)}
 
-Ask ONE short, relevant follow-up question to gather more useful information for the doctor, based on what hasn't been covered yet. You may take family medical history into account if it's relevant to the chief complaint.
-Do not repeat a question already asked. Do not ask about anything unrelated to the chief complaint.
+Identify missing or unclear information relevant to this patient's case and ask ONE short, useful follow-up question to help complete the case for the practitioner. Do not repeat anything already answered. Stay relevant to the chief complaint and to AYUSH case-taking (do not ask generic unrelated chatbot questions).
 
-Choose the response type that best fits the question:
-- "single_choice": the patient picks exactly one option (e.g. yes/no/not sure, a severity level, or a duration bucket)
-- "multiple_choice": the patient may pick more than one option (e.g. selecting several symptoms)
-- "numeric_scale": a 0-10 rating/severity style question
-- "free_text": only when there's no natural fixed set of options (e.g. "describe the pain in your own words")
+Choose the "type" that best fits the question:
+- "yes_no": a simple yes/no question
+- "single_choice": the patient picks exactly one option
+- "multi_choice": the patient may pick more than one option
+- "slider": a 0-10 rating/severity-of-symptom style question (never used to assign clinical risk — just the patient's own rating)
+- "text": only when there's no natural fixed set of options
 
 If you have gathered enough information already, respond with exactly: DONE
 
 Otherwise respond with ONLY a JSON object in exactly this shape, no markdown, no other text:
-{"question": "...", "responseType": "single_choice" | "multiple_choice" | "free_text" | "numeric_scale", "options": ["..."]}
+{"question": "...", "type": "yes_no" | "single_choice" | "multi_choice" | "slider" | "text", "options": ["..."], "section": "...", "reason": "..."}
 
-For "free_text" or "numeric_scale", "options" must be an empty array. Keep options short (a few words each) and offer at most 5.`;
+"section" is a short label for which part of the case this fills in (e.g. "History of Present Illness", "Agni", "Ahara-Vihara"). "reason" is one short sentence explaining, for the practitioner's reference only, why this question was asked (e.g. "Patient mentioned symptoms occur after meals but did not specify timing."). For "text" or "slider", "options" must be an empty array. For "yes_no", options must be exactly ["Yes","No"]. Keep options short (a few words each) and offer at most 5.`;
 
   try {
     const result = await withTimeout(model.generateContent(prompt), TIMEOUT_MS);
     const text = result.response.text().trim();
     if (!text || text.toUpperCase() === "DONE") return null;
 
-    const cleaned = text.replace(/^```json\s*|```\s*$/g, "").trim();
     try {
-      const parsed = JSON.parse(cleaned);
+      const parsed = JSON.parse(stripCodeFence(text));
       if (parsed && typeof parsed.question === "string" && parsed.question.trim()) {
-        const responseType: FollowUpResponseType = VALID_RESPONSE_TYPES.includes(parsed.responseType)
-          ? parsed.responseType
-          : "free_text";
+        const type: FollowUpResponseType = VALID_RESPONSE_TYPES.includes(parsed.type) ? parsed.type : "text";
         const options = Array.isArray(parsed.options) ? parsed.options.filter((o: unknown) => typeof o === "string") : [];
-        return { question: parsed.question.trim(), responseType, options };
+        return {
+          question: parsed.question.trim(),
+          type,
+          options,
+          section: typeof parsed.section === "string" && parsed.section.trim() ? parsed.section.trim() : "Follow-up",
+          reason: typeof parsed.reason === "string" ? parsed.reason.trim() : "",
+        };
       }
     } catch {
       // Not valid JSON — fall through to the backward-compatible plain-text path below.
     }
 
-    // Backward compatible: if Gemini ever replies with a bare question string
-    // instead of the JSON shape, still show it as a normal free-text question
-    // rather than failing the whole follow-up flow.
-    return { question: text.replace(/^["']|["']$/g, ""), responseType: "free_text", options: [] };
+    return { question: text.replace(/^["']|["']$/g, ""), type: "text", options: [], section: "Follow-up", reason: "" };
   } catch {
     return null;
   }
 }
 
 /**
- * Returns an AI-written narrative clinical summary, or null if Gemini is
- * unavailable/errors/times out. The rule-based summary (summaryEngine.ts)
- * is always the source of truth for the doctor — this is an enrichment
- * layer only, never a replacement.
+ * Returns an AI-organized narrative of the case, or null if Gemini is
+ * unavailable/errors/times out. The rule-based case sheet (summaryEngine.ts)
+ * is always the source of truth for the practitioner — this is a
+ * best-effort enrichment layer only, never a replacement, and never a
+ * diagnosis or treatment suggestion.
  */
 export async function getClinicalNarrative(params: {
   history: ClinicalHistory;
@@ -128,15 +141,15 @@ export async function getClinicalNarrative(params: {
   const { history, documents } = params;
   const prompt = `${SAFETY_RULES}
 
-Write a concise clinical summary for a doctor, using ONLY the information provided below. Do not invent any information that isn't present. Do not infer a diagnosis. Do not recommend treatment or medication.
+Organize a concise, factual case note for a practitioner, using ONLY the information provided below. Do not invent any information that isn't present. Do not infer or state a diagnosis. Do not recommend treatment or medication. Do not assign a severity, risk, or priority level.
 
-Chief complaint: ${history.chiefComplaintLabel}
-Structured answers: ${JSON.stringify(history.answers)}
+Chief complaint(s): ${history.chiefComplaintLabel}
+Structured answers (HPI, AYUSH info, Ahara-Vihara, medical history): ${JSON.stringify(history.answers)}
 Family medical history: ${JSON.stringify(history.familyHistory || [])}
 Follow-up questions and answers: ${JSON.stringify(history.aiFollowUp || [])}
 Uploaded documents: ${JSON.stringify(documents.map((d) => ({ type: d.documentType, fields: d.fields })))}
 
-Organize the summary into short labeled sections where the information is available (Chief Complaint, Reported Symptoms, Duration, Relevant Medical History, Family Medical History, Allergies, Current Medications, Follow-up Findings). Omit sections with no information rather than guessing. Keep it factual and concise — this is for a doctor to quickly review, not a patient-facing document.`;
+Organize into short labeled sections where information is available (Chief Complaint, History of Present Illness, AYUSH Case Information, Ahara-Vihara, Relevant Medical History, Family Medical History, Follow-up Findings). Omit sections with no information rather than guessing. Keep it factual and concise — this is what the patient reported, not a clinical conclusion.`;
 
   try {
     const result = await withTimeout(model.generateContent(prompt), NARRATIVE_TIMEOUT_MS);
@@ -199,7 +212,7 @@ Respond with ONLY a JSON array, like: [{"name":"...","dosage":"...","frequency":
 
   try {
     const result = await withTimeout(model.generateContent(prompt), TIMEOUT_MS);
-    const raw = result.response.text().trim().replace(/^```json\s*|```\s*$/g, "");
+    const raw = stripCodeFence(result.response.text().trim());
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return null;
     return parsed.map((m: any) => ({
@@ -210,6 +223,102 @@ Respond with ONLY a JSON array, like: [{"name":"...","dosage":"...","frequency":
     }));
   } catch (err) {
     console.error("[parse-prescription] error:", err);
+    return null;
+  }
+}
+
+export interface DocumentExtractionResult {
+  documentType: string;
+  date: string;
+  facility: string;
+  fields: ExtractedField[];
+}
+
+/**
+ * Digitizes a patient-uploaded medical document (prescription, lab report,
+ * discharge summary, etc.) from an image via Gemini vision. This is ALWAYS
+ * a draft — the caller must show it as "Review Extracted Information" and
+ * let the patient/practitioner confirm, edit, or reject it before it's
+ * treated as part of the case (PS26047 section 11). Returns null if Gemini
+ * is unavailable/errors/times out so the caller can fall back to the demo
+ * mock, clearly labeled as such.
+ */
+export async function extractDocumentFields(imageBase64: string, mimeType: string): Promise<DocumentExtractionResult | null> {
+  const model = getModel(VISION_MODEL);
+  if (!model) return null;
+
+  const prompt = `You are digitizing a patient's previous medical document (a prescription, lab/investigation report, or discharge summary) from an image, for a practitioner to review before a consultation.
+Transcribe only what is clearly visible. Do NOT infer, complete, or guess any value you cannot clearly read — if a value is unclear or partially visible, wrap that portion in [[double brackets]] instead of guessing. Do not add a diagnosis, medication, or interpretation that is not explicitly written on the document.
+
+Respond with ONLY a JSON object in exactly this shape, no markdown, no other text:
+{"documentType": "Prescription" | "Lab Report" | "Discharge Summary" | "Other", "date": "as printed on the document, or empty string if not visible", "facility": "hospital/clinic/doctor name if visible, or empty string", "fields": [{"key": "...", "value": "...", "flagForReview": true|false}]}
+
+Each entry in "fields" should be one clearly labeled piece of information from the document (e.g. "Diagnosis", "Medications", "Hemoglobin", "HbA1c"). Set "flagForReview": true only for a lab value that looks numerically outside a typical healthy range, so the practitioner double-checks it — never as a diagnosis or urgency judgment. If the image doesn't look like a medical document, return {"documentType": "Other", "date": "", "facility": "", "fields": []}.`;
+
+  try {
+    const result = await withTimeout(
+      model.generateContent([{ inlineData: { data: imageBase64, mimeType } }, { text: prompt }]),
+      EXTRACT_TIMEOUT_MS
+    );
+    const raw = stripCodeFence(result.response.text().trim());
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    const fields: ExtractedField[] = Array.isArray(parsed.fields)
+      ? parsed.fields
+          .filter((f: any) => f && typeof f.key === "string" && typeof f.value === "string")
+          .map((f: any) => ({ key: f.key, value: f.value, flagForReview: !!f.flagForReview }))
+      : [];
+    return {
+      documentType: typeof parsed.documentType === "string" && parsed.documentType ? parsed.documentType : "Other",
+      date: typeof parsed.date === "string" ? parsed.date : "",
+      facility: typeof parsed.facility === "string" ? parsed.facility : "",
+      fields,
+    };
+  } catch (err) {
+    console.error("[extract-document] error:", err);
+    return null;
+  }
+}
+
+/**
+ * Best-effort mapping of a spoken transcript onto a structured answer for
+ * the given field (PS26047 section 9). The result is ALWAYS shown back to
+ * the patient for confirmation before being saved — never trusted silently.
+ * Returns null if Gemini can't confidently map it, in which case the caller
+ * should fall back to showing the raw transcript for the patient to edit.
+ */
+export async function interpretVoiceAnswer(
+  transcript: string,
+  field: Pick<InterviewField, "type" | "question" | "options">
+): Promise<{ value: string | string[] | number } | null> {
+  if (field.type === "text") return { value: transcript.trim() };
+
+  const model = getModel();
+  if (!model) return null;
+
+  const prompt = `A patient answered a question by speaking. Map their spoken answer onto the structured answer format for this question. Do not add information they didn't say.
+
+Question: ${field.question}
+Answer type: ${field.type}
+${field.options?.length ? `Available options: ${JSON.stringify(field.options)}` : ""}
+Patient said: "${transcript}"
+
+${
+  field.type === "slider"
+    ? 'Respond with ONLY JSON: {"value": <integer 0-10>} based on what they said, or {"value": null} if you cannot determine a number.'
+    : field.type === "multi"
+      ? 'Respond with ONLY JSON: {"value": ["option", ...]} using only the exact option strings from the list above that match what they said, or {"value": null} if none clearly match.'
+      : 'Respond with ONLY JSON: {"value": "option"} using the exact option string from the list above that best matches what they said, or {"value": null} if none clearly match.'
+}
+No markdown, no other text.`;
+
+  try {
+    const result = await withTimeout(model.generateContent(prompt), TIMEOUT_MS);
+    const raw = stripCodeFence(result.response.text().trim());
+    const parsed = JSON.parse(raw);
+    if (parsed.value === null || parsed.value === undefined) return null;
+    return { value: parsed.value };
+  } catch {
     return null;
   }
 }

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse, unstable_after as after } from "next/server";
 import { supabaseServer } from "@/lib/supabase/server";
-import { buildSummary } from "@/lib/ai/summaryEngine";
-import { evaluateRedFlag } from "@/lib/ai/redFlagEngine";
+import { buildCaseSheet } from "@/lib/ai/summaryEngine";
 import { getClinicalNarrative } from "@/lib/ai/gemini";
 import { uid, nextToken } from "@/lib/utils/id";
 import { PatientRecord } from "@/types/patient";
@@ -21,15 +20,15 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   if (!draft) return NextResponse.json({ error: "no active draft" }, { status: 400 });
 
   const history = {
-    chiefComplaintCategory: draft.chiefComplaintCategory,
+    chiefComplaints: draft.chiefComplaints,
+    chiefComplaintOtherText: draft.chiefComplaintOtherText,
     chiefComplaintLabel: draft.chiefComplaintLabel,
     answers: draft.answers,
     familyHistory: draft.familyHistory || [],
     noFamilyHistory: draft.noFamilyHistory || false,
     aiFollowUp: draft.aiFollowUp || [],
   };
-  const summary = buildSummary(history, draft.documents);
-  const redFlag = evaluateRedFlag(draft.chiefComplaintCategory, draft.answers);
+  const caseSheet = buildCaseSheet(history, draft.documents);
 
   const { count } = await supabaseServer.from("patients").select("*", { count: "exact", head: true });
   const token = nextToken(count || 0);
@@ -44,19 +43,16 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     history,
     documents: draft.documents,
     timeline: [
-      { id: uid(), year: "2024", label: "Diabetes diagnosed" },
-      { id: uid(), year: "2025", label: "Hypertension documented" },
-      ...(draft.documents.length ? [{ id: uid(), year: "Aug 2026", label: `${draft.documents[0].documentType} uploaded` }] : []),
+      ...(draft.documents.length ? draft.documents.map((d: any) => ({ id: uid(), year: d.date || "Prior visit", label: `${d.documentType} added` })) : []),
       { id: uid(), year: "Today", label: "Intake completed at kiosk" },
     ],
-    summary,
-    redFlag,
+    caseSheet,
     doctorReview: { confirmed: false, edited: false, reviewer: null, timestamp: null },
     consent: { granted: true, timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), consentTextVersion: "v1" },
-    priority: redFlag.triggered ? "high" : "normal",
     aiStatus: "ready",
     status: "Waiting",
     createdAt: new Date().toISOString(),
+    treatmentFollowups: [],
   };
 
   const { error: insertError } = await supabaseServer.from("patients").insert(patientToRow(record));
@@ -68,16 +64,17 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     .eq("id", id);
   if (sessionError) return NextResponse.json({ error: sessionError.message }, { status: 500 });
 
-  // AI narrative is a best-effort enrichment on top of the rule-based summary above
-  // (which already ran and was saved) — generated in the background after responding
-  // so the patient is never kept waiting on it, and never blocked if it fails.
+  // AI narrative is a best-effort enrichment on top of the rule-based case
+  // sheet above (which already ran and was saved) — generated in the
+  // background after responding so the patient is never kept waiting on
+  // it, and never blocked if it fails.
   after(async () => {
     try {
       const aiNarrative = await getClinicalNarrative({ history, documents: draft.documents });
       if (aiNarrative) {
         await supabaseServer
           .from("patients")
-          .update({ summary: { ...summary, aiNarrative, aiGenerated: true } })
+          .update({ case_sheet: { ...caseSheet, aiNarrative, aiGenerated: true } })
           .eq("id", record.id);
       }
     } catch (err) {

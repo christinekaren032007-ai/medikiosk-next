@@ -1,96 +1,87 @@
-import { ComplaintCategory, InterviewField } from "@/types/clinical";
+import { ComplaintKey, InterviewField } from "@/types/clinical";
 
-export const CHIEF_COMPLAINTS: { key: ComplaintCategory; label: string }[] = [
-  { key: "chest_pain", label: "Chest pain" },
+export const CHIEF_COMPLAINTS: { key: ComplaintKey; label: string }[] = [
   { key: "fever", label: "Fever" },
   { key: "cough", label: "Cough" },
   { key: "headache", label: "Headache" },
-  { key: "abdominal_pain", label: "Abdominal pain" },
-  { key: "nausea_vomiting", label: "Nausea / Vomiting" },
-  { key: "breathlessness", label: "Breathing difficulty" },
-  { key: "injury_pain", label: "Injury / Pain" },
-  { key: "diarrhea", label: "Diarrhea" },
-  { key: "skin_problem", label: "Skin problem" },
-  { key: "diabetes", label: "Follow-up / fatigue" },
-  { key: "ayush", label: "General wellness (Ayurveda)" },
+  { key: "joint_pain", label: "Joint pain" },
+  { key: "back_pain", label: "Back pain" },
+  { key: "digestive", label: "Gastric / digestive complaints" },
+  { key: "skin", label: "Skin complaints" },
+  { key: "menstrual", label: "Menstrual complaints" },
+  { key: "fatigue", label: "Fatigue" },
+  { key: "sleep", label: "Sleep-related complaints" },
   { key: "other", label: "Other" },
 ];
 
+export function complaintLabel(keys: ComplaintKey[], otherText?: string): string {
+  const labels = keys
+    .filter((k) => k !== "other")
+    .map((k) => CHIEF_COMPLAINTS.find((c) => c.key === k)?.label || k);
+  if (keys.includes("other") && otherText?.trim()) labels.push(otherText.trim());
+  else if (keys.includes("other")) labels.push("Other");
+  return labels.length ? labels.join(", ") : "Not specified";
+}
+
 /**
- * Categories without a bespoke question tree below use this minimal flow —
- * the rest of the conversation is carried by Gemini's adaptive follow-up
- * questions (lib/ai/gemini.ts), which already tailor themselves to
- * whatever chief complaint and answers they're given.
+ * HISTORY OF PRESENT ILLNESS — one shared, patient-friendly flow used for
+ * every complaint (PS26047 section 5B). Deliberately generic rather than a
+ * bespoke tree per complaint, per the brief's "avoid long medical forms"
+ * guidance; Gemini's adaptive follow-ups (lib/ai/gemini.ts) fill in
+ * anything complaint-specific afterward.
  */
-const GENERIC_FLOW: InterviewField[] = [
-  { id: "description", type: "text", question: "Please briefly describe what's bothering you, in your own words." },
-  { id: "onset", type: "choice", question: "When did this start?", options: ["Today", "Yesterday", "2-3 days ago", "More than a week ago"] },
-  { id: "severity", type: "slider", question: "How severe would you say this is, from 0 to 10?" },
+export const HPI_FLOW: InterviewField[] = [
+  { id: "onset", type: "choice", section: "hpi", question: "When did this start?", options: ["Today", "Yesterday", "2-3 days ago", "About a week ago", "More than 2 weeks ago", "Not sure"] },
+  { id: "location", type: "text", section: "hpi", question: "Where do you feel it, if anywhere? (You can say 'not applicable')" },
+  { id: "character", type: "text", section: "hpi", question: "How would you describe it, in your own words?" },
+  { id: "severity", type: "slider", section: "hpi", question: "How severe is it, from 0 (none) to 10 (worst you can imagine)?" },
+  { id: "frequency", type: "choice", section: "hpi", question: "How often does it happen?", options: ["Constant / ongoing", "Several times a day", "Once a day", "A few times a week", "Rarely"] },
+  { id: "progression", type: "choice", section: "hpi", question: "Is it getting better, staying the same, or getting worse?", options: ["Getting better", "Staying the same", "Getting worse"] },
+  { id: "aggravating", type: "multi", section: "hpi", question: "Does anything seem to make it worse?", options: ["Certain foods", "Cold weather", "Stress", "Physical activity", "Lying down", "Nothing noticed", "Other"] },
+  { id: "relieving", type: "multi", section: "hpi", question: "Does anything make it feel better?", options: ["Rest", "Warm food or drink", "Medication", "Massage", "Nothing helps", "Other"] },
+  { id: "associatedSymptoms", type: "multi", section: "hpi", question: "Are you noticing any of these along with it?", options: ["Fever", "Fatigue", "Nausea", "Loss of appetite", "Sleep disturbance", "Mood changes", "None"] },
+  { id: "previousEpisodes", type: "choice", section: "hpi", question: "Have you had this problem before?", options: ["No, this is new", "Yes, a few times before", "Yes, this is ongoing / long-term"] },
 ];
 
 /**
- * FLOWS: a deterministic question tree per complaint category.
- * historyEngine.getFlow() is the single place UI components should read
- * from — never hard-code question screens in components.
+ * AYUSH CASE-TAKING — the central feature (PS26047 section 5). Always
+ * collected for every patient; not an opt-in mode. Plain-language question
+ * with the Ayurvedic term shown alongside, never presented as an AI
+ * diagnosis — this is patient-reported information for the practitioner
+ * to interpret.
  */
-export const FLOWS: Partial<Record<ComplaintCategory, InterviewField[]>> = {
-  chest_pain: [
-    { id: "onset", type: "choice", question: "When did the pain start?", options: ["Today", "Yesterday", "More than a week ago", "I don't know"] },
-    { id: "location", type: "choice", question: "Where do you feel the pain?", options: ["Center of chest", "Left side", "Right side", "Upper chest", "Other"] },
-    { id: "character", type: "choice", question: "What does the pain feel like?", options: ["Pressure", "Burning", "Sharp", "Tightness", "Other"] },
-    { id: "radiation", type: "choice", question: "Does the pain move anywhere?", options: ["Left arm", "Right arm", "Jaw", "Back", "No"] },
-    { id: "severity", type: "slider", question: "How severe is the pain, from 0 to 10?" },
-    { id: "associated", type: "multi", question: "Do you have any of these symptoms?", options: ["Shortness of breath", "Sweating", "Nausea", "Dizziness", "None"] },
-  ],
-  fever: [
-    { id: "onset", type: "choice", question: "How long have you had the fever?", options: ["Since today", "2-3 days", "More than a week"] },
-    { id: "intensity", type: "choice", question: "How high does the fever feel?", options: ["Mild", "High", "Very high", "Not measured"] },
-    { id: "associated", type: "multi", question: "Any of these along with the fever?", options: ["Chills", "Body ache", "Cough", "Rash", "None"] },
-    { id: "severity", type: "slider", question: "Overall, how unwell do you feel, 0 to 10?" },
-  ],
-  diabetes: [
-    { id: "reason", type: "choice", question: "What brings you in today?", options: ["Routine follow-up", "Feeling more tired than usual", "Medicine review", "Other"] },
-    { id: "adherence", type: "choice", question: "Have you been taking your medicines regularly?", options: ["Yes, every day", "Sometimes miss a dose", "Stopped taking them", "Not on medication"] },
-    { id: "diet", type: "choice", question: "How has your diet been lately?", options: ["Controlled", "Some lapses", "Not controlled"] },
-    { id: "severity", type: "slider", question: "How would you rate your energy levels, 0 to 10?" },
-  ],
-  abdominal_pain: [
-    { id: "onset", type: "choice", question: "When did the pain start?", options: ["Today", "Yesterday", "2-3 days ago", "More than a week ago"] },
-    { id: "location", type: "choice", question: "Where is the pain?", options: ["Upper abdomen", "Lower abdomen", "Around the navel", "Generalized"] },
-    { id: "character", type: "choice", question: "What does the pain feel like?", options: ["Cramping", "Burning", "Dull ache", "Sharp"] },
-    { id: "severity", type: "slider", question: "How severe is the pain, from 0 to 10?" },
-    { id: "associated", type: "multi", question: "Any of these along with the pain?", options: ["Nausea", "Vomiting", "Fever", "Loose stools", "None"] },
-  ],
-  breathlessness: [
-    { id: "onset", type: "choice", question: "When did the breathlessness start?", options: ["Today", "Yesterday", "2-3 days ago", "Gradually over weeks"] },
-    { id: "trigger", type: "choice", question: "When is it most noticeable?", options: ["At rest", "On exertion / walking", "Lying flat", "All the time"] },
-    { id: "severity", type: "slider", question: "How severe is the breathlessness, from 0 to 10?" },
-    { id: "associated", type: "multi", question: "Any of these along with it?", options: ["Chest pain", "Cough", "Swelling in legs", "Palpitations", "None"] },
-  ],
-  // AYUSH: all 15 Trividha/Dashavidha Pariksha parameters, rephrased for patients.
-  ayush: [
-    { id: "prakriti", type: "choice", question: "How would you describe your usual body constitution?", options: ["Light, quick-moving, easily cold (Vata type)", "Warm, sharp appetite, medium build (Pitta type)", "Steady, calm, solid build (Kapha type)", "Not sure"] },
-    { id: "vikriti", type: "choice", question: "How is your body feeling different from your usual self lately?", options: ["More restless / anxious than usual", "More irritable / overheated than usual", "More sluggish / heavy than usual", "No change"] },
-    { id: "agni", type: "choice", question: "How is your digestion, generally?", options: ["Irregular / variable", "Strong, sometimes excessive", "Slow, heavy after meals", "Balanced"] },
-    { id: "koshtha", type: "choice", question: "How would you describe your bowel movements?", options: ["Dry, irregular", "Loose, frequent", "Regular, well-formed", "Not sure"] },
-    { id: "ahara", type: "choice", question: "What best describes your usual diet?", options: ["Light and irregular meals", "Spicy / oily food often", "Heavy, regular meals", "Balanced, varied diet"] },
-    { id: "vihara", type: "choice", question: "How would you describe your daily activity and sleep?", options: ["Active but irregular sleep", "Moderate activity, sound sleep", "Sedentary, long sleep", "Varies a lot"] },
-    { id: "nidana", type: "choice", question: "Is there anything that seems to trigger your discomfort?", options: ["Stress or irregular routine", "Certain foods", "Weather changes", "Nothing specific"] },
-    { id: "sara", type: "choice", question: "How would you describe your overall tissue strength and vitality?", options: ["Feel delicate / low stamina", "Feel average", "Feel strong and robust"] },
-    { id: "samhanana", type: "choice", question: "How would you describe your body's build and compactness?", options: ["Slender, loosely built", "Medium, proportionate", "Sturdy, well-knit"] },
-    { id: "pramana", type: "choice", question: "How would you rate your general physical measurements (height/build) for your age?", options: ["Below average", "Average", "Above average"] },
-    { id: "satmya", type: "choice", question: "Which kinds of food, climate, or lifestyle suit you best?", options: ["Warm, moist environments", "Cool, dry environments", "Moderate, any climate"] },
-    { id: "sattva", type: "choice", question: "How would you describe your mental resilience under stress?", options: ["Easily disturbed", "Balanced, manageable", "Very calm and steady"] },
-    { id: "aharaShakti", type: "choice", question: "How strong is your appetite, generally?", options: ["Weak / variable appetite", "Moderate appetite", "Strong appetite"] },
-    { id: "vyayamaShakti", type: "choice", question: "How much physical activity can you comfortably do?", options: ["Tire quickly", "Moderate capacity", "High stamina"] },
-    { id: "vaya", type: "choice", question: "Which life stage would you place yourself in, health-wise?", options: ["Growth stage (younger)", "Middle / stable stage", "Elder stage"] },
-  ],
-};
+export const AYUSH_FLOW: InterviewField[] = [
+  { id: "prakriti", type: "choice", section: "ayush", technicalTerm: "Prakriti", question: "How would you describe your usual body type and nature, on a normal day?", options: ["Light, quick-moving, gets cold easily (Vata type)", "Warm, sharp appetite, medium build (Pitta type)", "Steady, calm, solid build (Kapha type)", "Not sure"] },
+  { id: "vikriti", type: "choice", section: "ayush", technicalTerm: "Vikriti", question: "How are you feeling different from your usual self recently?", options: ["More restless / anxious than usual", "More irritable / overheated than usual", "More sluggish / heavy than usual", "No noticeable change"] },
+  { id: "agni", type: "choice", section: "ayush", technicalTerm: "Agni", question: "How is your digestion and appetite, usually?", options: ["Irregular / variable", "Strong, sometimes excessive", "Slow, heavy after meals", "Balanced"] },
+  { id: "kostha", type: "choice", section: "ayush", technicalTerm: "Kostha", question: "How are your bowel movements, usually?", options: ["Dry / irregular", "Loose / frequent", "Regular and well-formed", "Varies a lot"] },
+  { id: "nidana", type: "choice", section: "ayush", technicalTerm: "Nidana", question: "Is there anything that seems to trigger or worsen your discomfort?", options: ["Stress or irregular routine", "Certain foods", "Weather changes", "Physical exertion", "Nothing specific", "Other"] },
+];
 
-export function getFlow(category: ComplaintCategory): InterviewField[] {
-  return FLOWS[category] || GENERIC_FLOW;
+/** AHARA-VIHARA lifestyle section (PS26047 sections 6 & 15). */
+export const LIFESTYLE_FLOW: InterviewField[] = [
+  { id: "foodHabits", type: "choice", section: "lifestyle", technicalTerm: "Ahara", question: "What best describes your usual diet?", options: ["Light and irregular meals", "Spicy / oily food often", "Heavy, regular meals", "Balanced, varied diet"] },
+  { id: "mealTiming", type: "choice", section: "lifestyle", question: "How regular are your meal times?", options: ["Very regular", "Somewhat regular", "Irregular / skip meals often"] },
+  { id: "waterIntake", type: "choice", section: "lifestyle", question: "How much water do you drink in a day?", options: ["Less than 4 glasses", "4-8 glasses", "More than 8 glasses"] },
+  { id: "sleepPattern", type: "choice", section: "lifestyle", question: "How would you describe your sleep?", options: ["Sound and sufficient", "Difficulty falling asleep", "Frequent waking", "Oversleeping / excessive sleep"] },
+  { id: "physicalActivity", type: "choice", section: "lifestyle", technicalTerm: "Vihara", question: "How active are you, day to day?", options: ["Sedentary (little movement)", "Light activity", "Moderately active", "Very active"] },
+  { id: "dailyRoutine", type: "choice", section: "lifestyle", question: "How regular is your daily routine?", options: ["Very structured", "Somewhat structured", "Irregular / unpredictable"] },
+  { id: "yogaMeditation", type: "choice", section: "lifestyle", question: "Do you practice yoga, meditation, or breathing exercises?", options: ["Regularly", "Occasionally", "Never"] },
+];
+
+/** Relevant medical history + previous treatment (PS26047 section 5C). */
+export const MEDICAL_HISTORY_FLOW: InterviewField[] = [
+  { id: "pastConditions", type: "text", section: "medical_history", question: "Do you have any ongoing health conditions? (e.g. diabetes, blood pressure) You can say 'none'." },
+  { id: "currentMedications", type: "text", section: "medical_history", question: "Are you currently taking any medicines? Please list them, or say 'none'." },
+  { id: "allergies", type: "text", section: "medical_history", question: "Do you have any known allergies? You can say 'none'." },
+  { id: "previousTreatment", type: "text", section: "medical_history", question: "Have you had any previous Ayurveda, Siddha, Unani, Homeopathy, or other treatment for this problem? You can say 'none'." },
+];
+
+/** The full sequence shown one question at a time in the kiosk. */
+export function getFullFlow(): InterviewField[] {
+  return [...HPI_FLOW, ...AYUSH_FLOW, ...LIFESTYLE_FLOW, ...MEDICAL_HISTORY_FLOW];
 }
 
-export function isFlowComplete(category: ComplaintCategory, answers: Record<string, unknown>): boolean {
-  return getFlow(category).every((f) => answers[f.id] !== undefined && answers[f.id] !== "");
+export function isFlowComplete(answers: Record<string, unknown>): boolean {
+  return getFullFlow().every((f) => answers[f.id] !== undefined && answers[f.id] !== "");
 }
