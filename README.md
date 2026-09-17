@@ -1,10 +1,11 @@
 # Rapha — Next.js Prototype
 
-AI-powered clinical intake platform for Indian hospital OPDs. Patient kiosk
-(voice + touch, adaptive interview, document digitization, red-flag
-detection) feeding a doctor dashboard (queue, priority alerts, AI summary
-review, FHIR demo). Runs entirely on deterministic mock data — **no external
-API keys required.**
+AI-assisted AYUSH clinical case-taking platform for Indian hospital OPDs.
+Patient kiosk (voice + touch, adaptive interview with a lightweight AYUSH
+Trividha Pariksha step, document digitization) feeding a doctor dashboard
+(queue, AYUSH assessment, AI summary review, prescription entry, FHIR demo).
+Rapha collects, structures, and summarizes — it never diagnoses; the doctor
+remains responsible for diagnosis and prescription.
 
 ## ⚠️ Important — read before running
 
@@ -36,45 +37,53 @@ Open `http://localhost:3000`.
 ## Demo flow (primary judge journey)
 
 1. Landing (`/`) → **Start Patient Demo**
-2. `/patient` → choose language → Start with Voice/Touch → pick demo ABHA identity
+2. `/patient` → choose language → Start with Voice/Touch → **First visit** or
+   **I have visited before** (returning shows a demo-labelled ABHA lookup)
 3. `/patient/consent` → I Agree
-4. `/patient/history` → answer the adaptive chest-pain questions (or use the
-   bottom-left **Demo Controls** panel → **Load Chest Pain** to skip straight
-   to a pre-filled review with the severity-7 + breathlessness combination,
-   which triggers the red-flag banner)
-5. `/patient/documents` → tap the upload zone → watch the staged OCR
+4. `/patient/records` (returning patients only) → **Use this information** or
+   **Don't use this information**
+5. `/patient/complaint` → pick a chief complaint from the broadened,
+   AYUSH-oriented list (fever, digestive problems, joint/muscle pain, sleep,
+   stress/fatigue, menstrual concerns, etc.)
+6. `/patient/history` → answer the adaptive questions for that complaint,
+   family history, AI follow-up questions, then the AYUSH Trividha Pariksha
+   step (or use the bottom-left **Demo Controls** panel → a scenario button
+   to skip straight to a pre-filled review)
+7. `/patient/documents` → tap the upload zone → watch the staged OCR
    simulation → discharge summary appears digitized
-6. `/patient/review` → **Everything looks correct**
-7. `/patient/complete` → token generated (e.g. `A-127`)
-8. `/doctor` → the new patient is in the queue, priority-flagged if chest
-   pain + breathlessness was reported
-9. Click the patient → tabs for Overview / Clinical History / Documents /
-   Timeline / AI Summary / Consent
-10. Summary tab → **Confirm Summary** or **Regenerate**
-11. Overview tab → **View FHIR Bundle** → formatted JSON, clearly labeled demo
+8. `/patient/review` → **Everything looks correct**
+9. `/patient/complete` → token generated (e.g. `A-127`)
+10. `/doctor` → the new patient is in the queue
+11. Click the patient → tabs for Overview / Clinical History (incl. AYUSH
+    Assessment) / Documents / Timeline / AI Summary / Consultation / Consent
+12. Summary tab → **Confirm Summary** or **Regenerate**
+13. Consultation tab → enter diagnosis + prescription → **Complete
+    Consultation**
+14. Overview tab → **View FHIR Bundle** → formatted JSON, clearly labeled demo
 
 The five patients listed in the brief (Ravi Kumar, Priya S, Arun K, Meena R,
-Suresh P) are pre-seeded in the doctor queue on first load — Ravi Kumar and
-Suresh P arrive already priority-flagged.
+Suresh P) are pre-seeded in the doctor queue on first load.
 
 ## Self-check against the spec
 
 **Working:** landing page with pipeline + feature cards; full patient route
-tree (`/patient`, `/consent`, `/history`, `/documents`, `/review`,
-`/complete`); adaptive interview engine (`lib/ai/historyEngine.ts`) covering
-chest pain, fever, diabetes follow-up, abdominal pain, breathlessness, and
-all 15 AYUSH parameters in patient-friendly phrasing; red-flag engine and
-visible alert with Call Staff / Continue Only With Staff Approval; document
+tree (`/patient`, `/consent`, `/records`, `/complaint`, `/history`,
+`/documents`, `/review`, `/complete`, `/treatment`); adaptive interview
+engine (`lib/ai/historyEngine.ts`) covering fever, cough, headache, digestive
+problems, joint/muscle pain, skin problems, sleep problems, stress/fatigue,
+menstrual concerns, chest pain, abdominal pain, breathlessness, and all 15
+AYUSH Dashavidha parameters in patient-friendly phrasing, plus a lightweight
+Trividha Pariksha (Darshana/Sparshana/Prashna) step on every intake; document
 upload with staged OCR animation and abnormal-value highlighting; AI summary
-engine with the "AI-generated draft" disclaimer; doctor dashboard with
-queue, priority alerts, and a 6-tab patient detail page; Confirm/Regenerate
-on the AI summary; a real `lib/fhir/transformer.ts` producing a FHIR-shaped
-Bundle viewable as formatted JSON; admin analytics with two Recharts
-charts; i18n across the core patient-facing screens; a Zustand store
-(`lib/data/store.ts`) with localStorage persistence so a refresh doesn't
-lose the queue; an unobtrusive Demo Control Panel (scenario loaders + Reset
-Demo + Patient/Doctor view shortcuts) tucked in the landing page's bottom
-corner, not shown mid-flow.
+engine with the "AI-generated draft — not a diagnosis" disclaimer; doctor
+dashboard with queue, an AYUSH Assessment section, and a 7-tab patient detail
+page including diagnosis/prescription entry; Confirm/Regenerate on the AI
+summary; a real `lib/fhir/transformer.ts` producing a FHIR-shaped Bundle
+viewable as formatted JSON; admin analytics with two Recharts charts; i18n
+across the core patient-facing screens; a Supabase-backed store
+(`lib/data/store.ts`) so the queue survives a refresh; an unobtrusive Demo
+Control Panel (scenario loaders + Reset Demo + Patient/Doctor view
+shortcuts) tucked in the landing page's bottom corner, not shown mid-flow.
 
 **Simplified from the spec, on purpose:**
 - **shadcn/ui** — not actually installed via its CLI (that needs network
@@ -90,16 +99,9 @@ corner, not shown mid-flow.
   page navigation, `loadScenario()` fills the draft instantly and jumps to
   `/patient/review` rather than replaying each route with delays — cleaner
   with the App Router, but less theatrical.
-- **Priority Alerts / Dashboard** are tabs within `/doctor` (client-side
-  state) rather than separate routes — matches the sidebar in the spec, but
-  isn't literally two URLs.
 - **Accessibility** — semantic structure, focus-visible defaults, and large
   touch targets are in place; I did not do a full ARIA/keyboard-navigation
   audit.
-- **PostgreSQL/Supabase-ready architecture** — the Zustand store is the
-  only persistence layer (via localStorage). `lib/data/store.ts` is written
-  so a real backend could replace the actions' bodies without touching any
-  component, but no actual DB/schema exists.
 
 ## Known risk areas to test first
 
