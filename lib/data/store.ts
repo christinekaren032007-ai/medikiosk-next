@@ -5,6 +5,9 @@ import { AyushAssessment, ComplaintCategory, FamilyHistoryEntry, FollowUpQA, Fol
 import { DraftPatient, PatientRecord } from "@/types/patient";
 import { Consultation } from "@/types/ai";
 import { Lang } from "@/lib/i18n/translations";
+import { CHIEF_COMPLAINTS } from "@/lib/ai/historyEngine";
+import { mockExtractDocument } from "@/lib/ai/documentEngine";
+import { uid } from "@/lib/utils/id";
 
 export type VisitType = "new" | "returning" | null;
 export interface PendingIdentity {
@@ -23,9 +26,34 @@ async function api<T = any>(url: string, init?: RequestInit): Promise<T> {
   return res.json();
 }
 
+/**
+ * Builds the same shape the server would have created for a new draft,
+ * entirely client-side. Used as a fallback so the kiosk demo can run start
+ * to finish without a reachable backend — never as a substitute when the
+ * backend IS available.
+ */
+function buildLocalDraft(category: ComplaintCategory, identity: PendingIdentity | null): DraftPatient {
+  return {
+    id: uid(),
+    name: identity?.name ?? "Guest Patient",
+    age: identity?.age ?? "—",
+    gender: identity?.gender ?? "—",
+    abhaId: identity?.abhaId ?? null,
+    chiefComplaintCategory: category,
+    chiefComplaintLabel: CHIEF_COMPLAINTS.find((c) => c.key === category)?.label || category,
+    answers: {},
+    documents: [],
+    docProcessingStage: null,
+  };
+}
+
 interface MediKioskState {
   sessionId: string | null;
   hydrated: boolean;
+  initError: string | null;
+  // True once any step of the demo has had to fall back to local,
+  // clearly-labelled demo data because the backend was unreachable.
+  offlineMode: boolean;
   lang: Lang;
   ayushMode: boolean;
   queue: PatientRecord[];
@@ -73,6 +101,8 @@ interface MediKioskState {
 export const useMediKioskStore = create<MediKioskState>()((set, get) => ({
   sessionId: null,
   hydrated: false,
+  initError: null,
+  offlineMode: false,
   lang: "en",
   ayushMode: false,
   queue: [],
@@ -93,18 +123,30 @@ export const useMediKioskStore = create<MediKioskState>()((set, get) => ({
       sessionId = crypto.randomUUID();
       if (typeof window !== "undefined") localStorage.setItem("mk_session_id", sessionId);
     }
-    const data = await api<{ sessionId: string; lang: Lang; ayushMode: boolean; draft: DraftPatient | null; lastToken: string | null }>(
-      "/api/session",
-      { method: "POST", body: JSON.stringify({ sessionId }) }
-    );
-    set({
-      sessionId: data.sessionId,
-      lang: data.lang,
-      ayushMode: data.ayushMode,
-      draft: data.draft,
-      lastToken: data.lastToken,
-      hydrated: true,
-    });
+    // Every patient-flow page gates its render on `hydrated`, so this must
+    // always resolve to true — even when the session call fails — or the
+    // whole kiosk is stuck blank forever with no way to recover.
+    try {
+      const data = await api<{ sessionId: string; lang: Lang; ayushMode: boolean; draft: DraftPatient | null; lastToken: string | null }>(
+        "/api/session",
+        { method: "POST", body: JSON.stringify({ sessionId }) }
+      );
+      set({
+        sessionId: data.sessionId,
+        lang: data.lang,
+        ayushMode: data.ayushMode,
+        draft: data.draft,
+        lastToken: data.lastToken,
+        hydrated: true,
+        initError: null,
+      });
+    } catch (err) {
+      set({
+        sessionId,
+        hydrated: true,
+        initError: err instanceof Error ? err.message : "Could not connect to the server.",
+      });
+    }
   },
 
   setLang: (lang) => {
@@ -122,29 +164,39 @@ export const useMediKioskStore = create<MediKioskState>()((set, get) => ({
 
   startPatient: async (category) => {
     const sessionId = get().sessionId;
-    if (!sessionId) return;
-    const data = await api<{ draft: DraftPatient }>(`/api/session/${sessionId}/draft`, {
-      method: "POST",
-      body: JSON.stringify({ category }),
-    });
-    let draft = data.draft;
-
-    // Fold in whatever the pre-draft welcome/visit-type/previous-records
-    // screens already captured, now that a draft exists to attach it to.
     const { pendingIdentity, visitType, previousRecordUsed } = get();
-    if (pendingIdentity || visitType) {
-      const patch = {
-        ...(pendingIdentity || {}),
-        returningPatient: visitType === "returning",
-        previousRecordUsed: visitType === "returning" ? previousRecordUsed : false,
-      };
-      const patched = await api<{ draft: DraftPatient }>(`/api/session/${sessionId}/draft`, {
-        method: "PATCH",
-        body: JSON.stringify(patch),
-      });
-      draft = patched.draft;
+    const identityPatch = pendingIdentity || visitType
+      ? {
+          ...(pendingIdentity || {}),
+          returningPatient: visitType === "returning",
+          previousRecordUsed: visitType === "returning" ? previousRecordUsed : false,
+        }
+      : null;
+
+    // Never let a broken/unreachable backend stall the demo on a dead
+    // button click — fall back to an equivalent local draft so the patient
+    // flow always continues, clearly marked as offline/demo data.
+    if (!sessionId) {
+      set({ draft: buildLocalDraft(category, pendingIdentity), offlineMode: true });
+      return;
     }
-    set({ draft });
+    try {
+      const data = await api<{ draft: DraftPatient }>(`/api/session/${sessionId}/draft`, {
+        method: "POST",
+        body: JSON.stringify({ category }),
+      });
+      let draft = data.draft;
+      if (identityPatch) {
+        const patched = await api<{ draft: DraftPatient }>(`/api/session/${sessionId}/draft`, {
+          method: "PATCH",
+          body: JSON.stringify(identityPatch),
+        });
+        draft = patched.draft;
+      }
+      set({ draft });
+    } catch {
+      set({ draft: { ...buildLocalDraft(category, pendingIdentity), ...identityPatch }, offlineMode: true });
+    }
   },
 
   setIdentity: (name, age, gender, abhaId) => {
@@ -158,42 +210,80 @@ export const useMediKioskStore = create<MediKioskState>()((set, get) => ({
   },
 
   syncDraft: async () => {
+    // Saves progress to the backend as a convenience — the in-memory draft
+    // already has every answer, so a failed save here must never block
+    // the patient from moving on to the next question.
     const { sessionId, draft } = get();
     if (!sessionId || !draft) return;
-    await api(`/api/session/${sessionId}/draft`, { method: "PATCH", body: JSON.stringify({ answers: draft.answers }) });
+    try {
+      await api(`/api/session/${sessionId}/draft`, { method: "PATCH", body: JSON.stringify({ answers: draft.answers }) });
+    } catch {
+      set({ offlineMode: true });
+    }
   },
 
   finishDocProcessing: async () => {
-    const sessionId = get().sessionId;
-    if (!sessionId) return;
-    const data = await api<{ draft: DraftPatient }>(`/api/session/${sessionId}/draft/finish-doc-processing`, { method: "POST" });
-    set({ draft: data.draft });
+    const { sessionId, draft } = get();
+    if (!sessionId || !draft) return;
+    try {
+      const data = await api<{ draft: DraftPatient }>(`/api/session/${sessionId}/draft/finish-doc-processing`, { method: "POST" });
+      set({ draft: data.draft });
+    } catch {
+      set({ draft: { ...draft, documents: [mockExtractDocument(draft.chiefComplaintCategory)], docProcessingStage: "done" }, offlineMode: true });
+    }
   },
 
   submitDraft: async () => {
     const sessionId = get().sessionId;
     if (!sessionId) return "";
-    const data = await api<{ token: string; patientId: string }>(`/api/session/${sessionId}/submit`, { method: "POST" });
-    set({ draft: null, lastToken: data.token, lastPatientId: data.patientId, visitType: null, pendingIdentity: null, previousRecordUsed: false });
-    return data.token;
+    try {
+      const data = await api<{ token: string; patientId: string }>(`/api/session/${sessionId}/submit`, { method: "POST" });
+      set({ draft: null, lastToken: data.token, lastPatientId: data.patientId, visitType: null, pendingIdentity: null, previousRecordUsed: false });
+      return data.token;
+    } catch {
+      // No reachable database to actually queue the patient for a doctor —
+      // but the patient's own demo must still be able to finish. The
+      // DEMO- prefix keeps this visibly distinct from a real queue token.
+      const demoToken = `DEMO-${uid().slice(0, 4).toUpperCase()}`;
+      set({ draft: null, lastToken: demoToken, lastPatientId: null, visitType: null, pendingIdentity: null, previousRecordUsed: false, offlineMode: true });
+      return demoToken;
+    }
   },
 
   resetDraft: async () => {
     const sessionId = get().sessionId;
     set({ draft: null, visitType: null, pendingIdentity: null, previousRecordUsed: false });
-    if (sessionId) await api(`/api/session/${sessionId}/draft`, { method: "DELETE" });
+    if (sessionId) {
+      try {
+        await api(`/api/session/${sessionId}/draft`, { method: "DELETE" });
+      } catch {
+        set({ offlineMode: true });
+      }
+    }
   },
 
   setFamilyHistory: async (entries, noFamilyHistory) => {
     set((s) => (s.draft ? { draft: { ...s.draft, familyHistory: entries, noFamilyHistory } } : {}));
     const sessionId = get().sessionId;
-    if (sessionId) await api(`/api/session/${sessionId}/draft`, { method: "PATCH", body: JSON.stringify({ familyHistory: entries, noFamilyHistory }) });
+    if (sessionId) {
+      try {
+        await api(`/api/session/${sessionId}/draft`, { method: "PATCH", body: JSON.stringify({ familyHistory: entries, noFamilyHistory }) });
+      } catch {
+        set({ offlineMode: true });
+      }
+    }
   },
 
   setAyushAssessment: async (assessment) => {
     set((s) => (s.draft ? { draft: { ...s.draft, ayushAssessment: assessment } } : {}));
     const sessionId = get().sessionId;
-    if (sessionId) await api(`/api/session/${sessionId}/draft`, { method: "PATCH", body: JSON.stringify({ ayushAssessment: assessment }) });
+    if (sessionId) {
+      try {
+        await api(`/api/session/${sessionId}/draft`, { method: "PATCH", body: JSON.stringify({ ayushAssessment: assessment }) });
+      } catch {
+        set({ offlineMode: true });
+      }
+    }
   },
 
   fetchFollowUpQuestion: async () => {
@@ -222,7 +312,13 @@ export const useMediKioskStore = create<MediKioskState>()((set, get) => ({
     const aiFollowUp: FollowUpQA[] = [...(draft.aiFollowUp || []), { question, answer }];
     set({ draft: { ...draft, aiFollowUp } });
     const sessionId = get().sessionId;
-    if (sessionId) await api(`/api/session/${sessionId}/draft`, { method: "PATCH", body: JSON.stringify({ aiFollowUp }) });
+    if (sessionId) {
+      try {
+        await api(`/api/session/${sessionId}/draft`, { method: "PATCH", body: JSON.stringify({ aiFollowUp }) });
+      } catch {
+        set({ offlineMode: true });
+      }
+    }
   },
 
   loadScenario: async (key) => {
@@ -270,6 +366,7 @@ export const useMediKioskStore = create<MediKioskState>()((set, get) => ({
       visitType: null,
       pendingIdentity: null,
       previousRecordUsed: false,
+      offlineMode: false,
     });
   },
 }));

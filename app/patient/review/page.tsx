@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, Edit3 } from "lucide-react";
 import { Card } from "@/components/shared/Primitives";
@@ -18,16 +19,23 @@ export default function ReviewPage() {
   const draft = useMediKioskStore((s) => s.draft);
   const submitDraft = useMediKioskStore((s) => s.submitDraft);
   const lang = useMediKioskStore((s) => s.lang);
+  const [finishing, setFinishing] = useState(false);
 
   if (!hydrated) return null;
-  if (!draft) {
+  if (!draft && !finishing) {
     router.replace("/patient");
     return null;
   }
+  if (!draft) return null;
 
   const flow = getFlow(draft.chiefComplaintCategory);
 
   async function finish() {
+    // submitDraft() clears the draft on completion, which would otherwise
+    // make this component's own `!draft` guard above fire a redirect back
+    // to "/patient" in a race with the router.push below — this flag holds
+    // that off until navigation to Complete has actually been requested.
+    setFinishing(true);
     const token = await submitDraft();
     if (token) router.push("/patient/complete");
   }

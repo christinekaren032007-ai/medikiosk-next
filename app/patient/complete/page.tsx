@@ -12,6 +12,7 @@ export default function CompletePage() {
   const router = useRouter();
   const lastToken = useMediKioskStore((s) => s.lastToken);
   const lastPatientId = useMediKioskStore((s) => s.lastPatientId);
+  const offlineMode = useMediKioskStore((s) => s.offlineMode);
   const resetDraft = useMediKioskStore((s) => s.resetDraft);
   const lang = useMediKioskStore((s) => s.lang);
 
@@ -38,6 +39,11 @@ export default function CompletePage() {
           <div className="text-xs text-stone-400 mb-6">Your token number</div>
           <p className="text-sm text-stone-600 mb-4">{t(lang, "proceed")}</p>
           <Badge tone="stone">ABDM/FHIR Integration — Demo Simulation</Badge>
+          {offlineMode && (
+            <div className="mt-3">
+              <Badge tone="amber">Demo mode — some steps used local simulated data (no live backend connection)</Badge>
+            </div>
+          )}
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <Button variant="ghost" onClick={startOver}>Start a new intake</Button>
             <Button variant="secondary" onClick={() => router.push("/doctor")}>Open Doctor Dashboard</Button>
