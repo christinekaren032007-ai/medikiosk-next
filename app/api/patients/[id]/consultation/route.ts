@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseServer } from "@/lib/supabase/server";
-import { rowToPatient } from "@/lib/server/patientMapping";
-import { Consultation, Medicine } from "@/types/ai";
+import { saveDoctorAssessment, fetchConsultationRecord } from "@/lib/server/db";
+import { Medicine } from "@/types/ai";
 
 export const dynamic = "force-dynamic";
 
@@ -14,21 +13,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     doctorNotes: string;
   };
 
-  const consultation: Consultation = {
-    diagnosis: body.diagnosis || "",
-    medicines: body.medicines || [],
-    additionalInstructions: body.additionalInstructions || "",
-    doctorNotes: body.doctorNotes || "",
-    completedAt: new Date().toISOString(),
-  };
-
-  const { data, error } = await supabaseServer
-    .from("patients")
-    .update({ consultation, status: "Completed" })
-    .eq("id", id)
-    .select()
-    .single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  return NextResponse.json({ patient: rowToPatient(data) });
+  try {
+    await saveDoctorAssessment(id, {
+      diagnosis: body.diagnosis || "",
+      medicines: body.medicines || [],
+      additionalInstructions: body.additionalInstructions || "",
+      doctorNotes: body.doctorNotes || "",
+    });
+    const patient = await fetchConsultationRecord(id);
+    if (!patient) return NextResponse.json({ error: "not found" }, { status: 404 });
+    return NextResponse.json({ patient });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : "unknown error" }, { status: 500 });
+  }
 }

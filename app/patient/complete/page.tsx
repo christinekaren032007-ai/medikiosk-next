@@ -11,7 +11,7 @@ import { t } from "@/lib/i18n/translations";
 export default function CompletePage() {
   const router = useRouter();
   const lastToken = useMediKioskStore((s) => s.lastToken);
-  const lastPatientId = useMediKioskStore((s) => s.lastPatientId);
+  const lastConsultationId = useMediKioskStore((s) => s.lastConsultationId);
   const offlineMode = useMediKioskStore((s) => s.offlineMode);
   const resetDraft = useMediKioskStore((s) => s.resetDraft);
   const lang = useMediKioskStore((s) => s.lang);
@@ -47,7 +47,7 @@ export default function CompletePage() {
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <Button variant="ghost" onClick={startOver}>Start a new intake</Button>
             <Button variant="secondary" onClick={() => router.push("/doctor")}>Open Doctor Dashboard</Button>
-            {lastPatientId && <Button onClick={() => router.push("/patient/treatment")}>View My Treatment Plan</Button>}
+            {lastConsultationId && <Button onClick={() => router.push("/patient/treatment")}>View My Treatment Plan</Button>}
           </div>
         </Card>
       </div>

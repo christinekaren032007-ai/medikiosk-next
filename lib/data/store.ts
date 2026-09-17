@@ -59,7 +59,7 @@ interface MediKioskState {
   queue: PatientRecord[];
   draft: DraftPatient | null;
   lastToken: string | null;
-  lastPatientId: string | null;
+  lastConsultationId: string | null;
 
   // Pre-draft kiosk flow state: captured before a complaint is chosen (and
   // therefore before a draft exists), then folded into the draft once
@@ -108,7 +108,7 @@ export const useMediKioskStore = create<MediKioskState>()((set, get) => ({
   queue: [],
   draft: null,
   lastToken: null,
-  lastPatientId: null,
+  lastConsultationId: null,
 
   visitType: null,
   pendingIdentity: null,
@@ -237,15 +237,15 @@ export const useMediKioskStore = create<MediKioskState>()((set, get) => ({
     const sessionId = get().sessionId;
     if (!sessionId) return "";
     try {
-      const data = await api<{ token: string; patientId: string }>(`/api/session/${sessionId}/submit`, { method: "POST" });
-      set({ draft: null, lastToken: data.token, lastPatientId: data.patientId, visitType: null, pendingIdentity: null, previousRecordUsed: false });
+      const data = await api<{ token: string; consultationId: string }>(`/api/session/${sessionId}/submit`, { method: "POST" });
+      set({ draft: null, lastToken: data.token, lastConsultationId: data.consultationId, visitType: null, pendingIdentity: null, previousRecordUsed: false });
       return data.token;
     } catch {
       // No reachable database to actually queue the patient for a doctor —
       // but the patient's own demo must still be able to finish. The
       // DEMO- prefix keeps this visibly distinct from a real queue token.
       const demoToken = `DEMO-${uid().slice(0, 4).toUpperCase()}`;
-      set({ draft: null, lastToken: demoToken, lastPatientId: null, visitType: null, pendingIdentity: null, previousRecordUsed: false, offlineMode: true });
+      set({ draft: null, lastToken: demoToken, lastConsultationId: null, visitType: null, pendingIdentity: null, previousRecordUsed: false, offlineMode: true });
       return demoToken;
     }
   },
@@ -360,7 +360,7 @@ export const useMediKioskStore = create<MediKioskState>()((set, get) => ({
       queue: data.queue,
       draft: null,
       lastToken: null,
-      lastPatientId: null,
+      lastConsultationId: null,
       ayushMode: false,
       lang: "en",
       visitType: null,

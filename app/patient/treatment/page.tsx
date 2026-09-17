@@ -12,16 +12,16 @@ import { Consultation } from "@/types/ai";
 export default function TreatmentPlanPage() {
   const router = useRouter();
   const hydrated = useMediKioskStore((s) => s.hydrated);
-  const lastPatientId = useMediKioskStore((s) => s.lastPatientId);
+  const lastConsultationId = useMediKioskStore((s) => s.lastConsultationId);
   const [consultation, setConsultation] = useState<Consultation | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [reminders, setReminders] = useState<Record<number, boolean>>({});
 
   useEffect(() => {
-    if (!lastPatientId) return;
+    if (!lastConsultationId) return;
     let cancelled = false;
     async function poll() {
-      const res = await fetch(`/api/treatment/${lastPatientId}`);
+      const res = await fetch(`/api/treatment/${lastConsultationId}`);
       if (cancelled) return;
       if (res.status === 404) {
         setNotFound(true);
@@ -36,7 +36,7 @@ export default function TreatmentPlanPage() {
       cancelled = true;
       clearInterval(iv);
     };
-  }, [lastPatientId]);
+  }, [lastConsultationId]);
 
   function toggleReminder(i: number) {
     setReminders((r) => ({ ...r, [i]: !r[i] }));
@@ -52,7 +52,7 @@ export default function TreatmentPlanPage() {
         </div>
 
         <Card className="p-8">
-          {!hydrated || (!lastPatientId && !notFound) ? null : !lastPatientId || notFound ? (
+          {!hydrated || (!lastConsultationId && !notFound) ? null : !lastConsultationId || notFound ? (
             <>
               <div className="text-sm text-stone-500 mb-6">We couldn't find an active treatment plan for this session. This view is only available right after finishing an intake and seeing the doctor.</div>
               <Button variant="secondary" onClick={() => router.push("/patient")} className="w-full">Back to Kiosk</Button>
