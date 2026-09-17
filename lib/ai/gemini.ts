@@ -1,8 +1,9 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { ClinicalHistory, FollowUpQA, FamilyHistoryEntry, FollowUpQuestion, FollowUpResponseType } from "@/types/clinical";
+import { ClinicalHistory, FamilyHistoryEntry, FollowUpQuestion, FollowUpResponseType } from "@/types/clinical";
 import { DocumentRecord } from "@/types/document";
 
-const VALID_RESPONSE_TYPES: FollowUpResponseType[] = ["single_choice", "multiple_choice", "free_text", "numeric_scale"];
+const VALID_RESPONSE_TYPES: FollowUpResponseType[] = ["yes_no", "single_select", "multi_select", "slider", "short_text"];
+const SELECT_TYPES: FollowUpResponseType[] = ["single_select", "multi_select"];
 
 const MODEL = "gemini-3.6-flash";
 const TIMEOUT_MS = 15000;
@@ -10,9 +11,11 @@ const NARRATIVE_TIMEOUT_MS = 18000;
 const TRANSCRIBE_TIMEOUT_MS = 25000;
 export const MAX_FOLLOW_UP_QUESTIONS = 3;
 
-const SAFETY_RULES = `You are a clinical intake assistant helping gather information from a patient BEFORE they see a doctor.
-You must NEVER diagnose a disease, predict a diagnosis, prescribe medication, recommend medication, recommend treatment, or make any clinical decision.
-You only ask short, relevant follow-up questions to gather more information, or summarize information the patient has already provided.
+export const AI_SUMMARY_DISCLAIMER = "AI-generated summary — not a diagnosis. Final assessment is made by the physician.";
+
+const SAFETY_RULES = `You are a clinical intake assistant helping gather information for AYUSH (Ayurveda, Yoga, Unani, Siddha, Homeopathy) case-taking, BEFORE the patient sees a physician.
+You must NEVER diagnose a disease, predict a diagnosis, prescribe medication, recommend medication, recommend treatment, or calculate any emergency/priority/urgency score.
+You only ask short, relevant follow-up questions to gather more information, or organize/summarize information the patient has already provided.
 Never repeat a question that has already been answered.`;
 
 function getModel() {
@@ -39,21 +42,49 @@ async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 }
 
 /**
- * Returns the next adaptive follow-up question, or null if Gemini is
- * unavailable, errors, times out, or has gathered enough information.
- * Callers must treat null as "no AI question available" and let the
- * patient continue — never block the intake flow on this.
+ * Parses and validates Gemini's raw text response for the follow-up
+ * questions prompt into a clean array of FollowUpQuestion. Exported as a
+ * pure function (no network call) so the schema-validation/sanitization
+ * logic can be exercised directly in tests without a live Gemini call.
+ * Throws if the response isn't recoverable JSON in the expected shape.
  */
-export async function getFollowUpQuestion(params: {
+export function parseFollowUpQuestionsResponse(rawText: string): FollowUpQuestion[] {
+  const text = rawText.trim();
+  if (!text || text.toUpperCase() === "DONE") return [];
+
+  const cleaned = text.replace(/^```json\s*|^```\s*|```\s*$/g, "").trim();
+  const parsed = JSON.parse(cleaned);
+  const rawQuestions = Array.isArray(parsed?.questions) ? parsed.questions : [];
+
+  const questions: FollowUpQuestion[] = [];
+  for (const q of rawQuestions) {
+    if (!q || typeof q.question !== "string" || !q.question.trim()) continue;
+    const type: FollowUpResponseType = VALID_RESPONSE_TYPES.includes(q.type) ? q.type : "short_text";
+    const rawOptions = Array.isArray(q.options) ? q.options.filter((o: unknown) => typeof o === "string" && o.trim()) : [];
+    const options = SELECT_TYPES.includes(type) ? rawOptions.slice(0, 6) : [];
+    const required = typeof q.required === "boolean" ? q.required : true;
+    questions.push({ question: q.question.trim(), type, options, required });
+    if (questions.length >= MAX_FOLLOW_UP_QUESTIONS) break;
+  }
+  return questions;
+}
+
+/**
+ * Asks Gemini for 1-3 adaptive AYUSH case-taking follow-up questions based
+ * on the complaint-specific answers already collected, in one call. Returns
+ * a clear `error` string (never fake questions) whenever Gemini is
+ * unconfigured, unreachable, times out, or replies with something that
+ * can't be parsed as the expected schema — callers must surface this to
+ * the user rather than silently continuing as if nothing happened.
+ */
+export async function getFollowUpQuestions(params: {
   chiefComplaintLabel: string;
   answers: Record<string, unknown>;
-  priorFollowUp: FollowUpQA[];
   familyHistory?: FamilyHistoryEntry[];
   noFamilyHistory?: boolean;
-}): Promise<FollowUpQuestion | null> {
+}): Promise<{ questions: FollowUpQuestion[]; error: string | null }> {
   const model = getModel();
-  if (!model) return null;
-  if (params.priorFollowUp.length >= MAX_FOLLOW_UP_QUESTIONS) return null;
+  if (!model) return { questions: [], error: "Gemini is not configured on the server (missing GEMINI_API_KEY)." };
 
   const familyHistoryText = params.noFamilyHistory
     ? "None reported."
@@ -66,86 +97,83 @@ export async function getFollowUpQuestion(params: {
 Chief complaint: ${params.chiefComplaintLabel}
 Information already collected from the structured intake form: ${JSON.stringify(params.answers)}
 Family medical history: ${familyHistoryText}
-Follow-up questions already asked and answered in this conversation: ${JSON.stringify(params.priorFollowUp)}
 
-Ask ONE short, relevant follow-up question to gather more useful information for the doctor, based on what hasn't been covered yet. You may take family medical history into account if it's relevant to the chief complaint.
-Do not repeat a question already asked. Do not ask about anything unrelated to the chief complaint.
+Generate 1 to 3 short, relevant follow-up questions to gather additional useful information for the doctor's AYUSH case-taking, based ONLY on what hasn't already been covered by the information above.
+Do not repeat any question whose information is already collected above. Do not ask about anything unrelated to the chief complaint. Do not diagnose. Do not recommend medicines or treatment. Do not calculate an emergency or priority score.
+If nothing useful remains to ask, return an empty "questions" array.
 
-Choose the response type that best fits the question:
-- "single_choice": the patient picks exactly one option (e.g. yes/no/not sure, a severity level, or a duration bucket)
-- "multiple_choice": the patient may pick more than one option (e.g. selecting several symptoms)
-- "numeric_scale": a 0-10 rating/severity style question
-- "free_text": only when there's no natural fixed set of options (e.g. "describe the pain in your own words")
+Allowed "type" values, and how to fill the other fields for each:
+- "yes_no": a yes/no question. "options" must be [].
+- "single_select": the patient picks exactly one option. "options" must contain the choices.
+- "multi_select": the patient may pick more than one option. "options" must contain the choices.
+- "slider": a 0-10 rating/severity style question. "options" must be [].
+- "short_text": only when there's no natural fixed set of options. "options" must be [].
 
-If you have gathered enough information already, respond with exactly: DONE
+Set "required" to true unless the question is genuinely optional/supplementary.
 
-Otherwise respond with ONLY a JSON object in exactly this shape, no markdown, no other text:
-{"question": "...", "responseType": "single_choice" | "multiple_choice" | "free_text" | "numeric_scale", "options": ["..."]}
+Respond with ONLY a JSON object in exactly this shape, no markdown, no other text:
+{"questions": [{"question": "...", "type": "yes_no" | "single_select" | "multi_select" | "slider" | "short_text", "options": ["..."], "required": true}]}
 
-For "free_text" or "numeric_scale", "options" must be an empty array. Keep options short (a few words each) and offer at most 5.`;
+Keep options short (a few words each) and offer at most 5 per question. Maximum 3 questions total.`;
 
   try {
     const result = await withTimeout(model.generateContent(prompt), TIMEOUT_MS);
-    const text = result.response.text().trim();
-    if (!text || text.toUpperCase() === "DONE") return null;
-
-    const cleaned = text.replace(/^```json\s*|```\s*$/g, "").trim();
-    try {
-      const parsed = JSON.parse(cleaned);
-      if (parsed && typeof parsed.question === "string" && parsed.question.trim()) {
-        const responseType: FollowUpResponseType = VALID_RESPONSE_TYPES.includes(parsed.responseType)
-          ? parsed.responseType
-          : "free_text";
-        const options = Array.isArray(parsed.options) ? parsed.options.filter((o: unknown) => typeof o === "string") : [];
-        return { question: parsed.question.trim(), responseType, options };
-      }
-    } catch {
-      // Not valid JSON — fall through to the backward-compatible plain-text path below.
-    }
-
-    // Backward compatible: if Gemini ever replies with a bare question string
-    // instead of the JSON shape, still show it as a normal free-text question
-    // rather than failing the whole follow-up flow.
-    return { question: text.replace(/^["']|["']$/g, ""), responseType: "free_text", options: [] };
-  } catch {
-    return null;
+    const text = result.response.text();
+    return { questions: parseFollowUpQuestionsResponse(text), error: null };
+  } catch (err) {
+    return { questions: [], error: `Gemini follow-up request failed: ${err instanceof Error ? err.message : "unknown error"}` };
   }
 }
 
 /**
- * Returns an AI-written narrative clinical summary, or null if Gemini is
- * unavailable/errors/times out. The rule-based summary (summaryEngine.ts)
- * is always the source of truth for the doctor — this is an enrichment
- * layer only, never a replacement.
+ * Ensures the mandated disclaimer is present verbatim in an AI-generated
+ * summary, regardless of whether the model included it (or phrased it
+ * differently) on its own — this must never depend on the model reliably
+ * following instructions.
  */
-export async function getClinicalNarrative(params: {
+function withDisclaimer(text: string): string {
+  return text.includes(AI_SUMMARY_DISCLAIMER) ? text : `${text}\n\n${AI_SUMMARY_DISCLAIMER}`;
+}
+
+/**
+ * Generates the AI case summary for a completed consultation: a concise,
+ * structured, doctor-facing organization of everything Rapha collected —
+ * never a diagnosis, treatment recommendation, or priority/urgency
+ * classification. Returns a clear `error` (never a fabricated summary)
+ * when Gemini is unconfigured, unreachable, times out, or fails.
+ */
+export async function getCaseSummary(params: {
+  patient: { name: string; age: number | "—"; gender: string };
   history: ClinicalHistory;
   documents: DocumentRecord[];
-}): Promise<string | null> {
+}): Promise<{ narrative: string | null; error: string | null }> {
   const model = getModel();
-  if (!model) return null;
+  if (!model) return { narrative: null, error: "Gemini is not configured on the server (missing GEMINI_API_KEY)." };
 
-  const { history, documents } = params;
+  const { patient, history, documents } = params;
   const prompt = `${SAFETY_RULES}
 
-Write a concise clinical summary for a doctor, using ONLY the information provided below. Do not invent any information that isn't present. Do not infer a diagnosis. Do not recommend treatment or medication.
+Write a concise, structured case summary for a doctor, using ONLY the information provided below. Do not invent any information that isn't present. Do not infer or state a diagnosis. Do not recommend treatment or medication. Do not calculate or mention any emergency/priority/urgency score.
 
+Patient details: ${JSON.stringify(patient)}
 Chief complaint: ${history.chiefComplaintLabel}
-Structured answers: ${JSON.stringify(history.answers)}
+Structured intake answers: ${JSON.stringify(history.answers)}
 Family medical history: ${JSON.stringify(history.familyHistory || [])}
-Follow-up questions and answers: ${JSON.stringify(history.aiFollowUp || [])}
-AYUSH assessment (Trividha Pariksha, patient-reported): ${JSON.stringify(history.ayushAssessment || null)}
+AI follow-up questions and answers: ${JSON.stringify(history.aiFollowUp || [])}
+AYUSH assessment — Trividha Pariksha, patient-reported (Darshana/observed, Sparshana/touch, Prashna/additional notes): ${JSON.stringify(history.ayushAssessment || null)}
+Dashavidha Pariksha fields, when this is an AYUSH-category visit (already included in the structured intake answers above where present, e.g. prakriti, agni, koshtha, nidana, etc.): see "Structured intake answers" above.
 Returning patient with previous records used: ${history.returningPatient && history.previousRecordUsed ? "yes" : "no"}
-Uploaded documents: ${JSON.stringify(documents.map((d) => ({ type: d.documentType, fields: d.fields })))}
+Relevant previous records / uploaded documents: ${JSON.stringify(documents.map((d) => ({ type: d.documentType, fields: d.fields })))}
 
-Organize the summary into short labeled sections where the information is available (Chief Complaint, Reported Symptoms, Duration, Relevant Medical History, Family Medical History, AYUSH Assessment, Allergies, Current Medications, Follow-up Findings). Omit sections with no information rather than guessing. Keep it factual and concise — this is for a doctor to quickly review, not a patient-facing document.`;
+Organize the summary into short labeled sections, using only the sections where information is actually available (Patient Details, Chief Complaint, History of Present Illness, Family Medical History, AYUSH Assessment — Trividha Pariksha, Dashavidha Pariksha, Follow-up Findings, Relevant Previous Records). Omit sections with no information rather than guessing. Keep it factual and concise — this is for a doctor to quickly review, not a patient-facing document. Do not add your own disclaimer text; one will be appended automatically.`;
 
   try {
     const result = await withTimeout(model.generateContent(prompt), NARRATIVE_TIMEOUT_MS);
     const text = result.response.text().trim();
-    return text || null;
-  } catch {
-    return null;
+    if (!text) return { narrative: null, error: "Gemini returned an empty response." };
+    return { narrative: withDisclaimer(text), error: null };
+  } catch (err) {
+    return { narrative: null, error: `Gemini case summary request failed: ${err instanceof Error ? err.message : "unknown error"}` };
   }
 }
 

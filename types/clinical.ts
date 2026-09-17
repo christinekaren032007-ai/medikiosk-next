@@ -59,12 +59,13 @@ export interface FollowUpQA {
  * The saved answer (FollowUpQA above) is unaffected — this only shapes how
  * the question is PRESENTED before the answer is captured.
  */
-export type FollowUpResponseType = "single_choice" | "multiple_choice" | "free_text" | "numeric_scale";
+export type FollowUpResponseType = "yes_no" | "single_select" | "multi_select" | "slider" | "short_text";
 
 export interface FollowUpQuestion {
   question: string;
-  responseType: FollowUpResponseType;
+  type: FollowUpResponseType;
   options: string[];
+  required: boolean;
 }
 
 /**

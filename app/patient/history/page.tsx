@@ -12,7 +12,6 @@ import { getFlow } from "@/lib/ai/historyEngine";
 import { FAMILY_CONDITIONS, RELATION_OPTIONS, FollowUpQA, FollowUpQuestion } from "@/types/clinical";
 
 const STEPS = ["Visit", "Consent", "Records", "Complaint", "Intake", "Documents", "Review", "Complete"];
-const MAX_FOLLOW_UP = 3;
 const NO_FAMILY_HISTORY = "No known family medical history";
 const DARSHANA_OPTIONS = ["Skin changes noticed", "Tongue coating or discoloration", "Visible swelling", "Unusual paleness", "Nothing unusual noticed"];
 const SPARSHANA_OPTIONS = ["Skin feels dry / rough", "Skin feels warm or oily", "Body feels heavy or cold to touch", "Feels normal"];
@@ -25,8 +24,9 @@ export default function HistoryPage() {
   const syncDraft = useMediKioskStore((s) => s.syncDraft);
   const setFamilyHistory = useMediKioskStore((s) => s.setFamilyHistory);
   const setAyushAssessment = useMediKioskStore((s) => s.setAyushAssessment);
-  const fetchFollowUpQuestion = useMediKioskStore((s) => s.fetchFollowUpQuestion);
+  const fetchFollowUpQuestions = useMediKioskStore((s) => s.fetchFollowUpQuestions);
   const answerFollowUp = useMediKioskStore((s) => s.answerFollowUp);
+  const backendError = useMediKioskStore((s) => s.backendError);
   const [stepIndex, setStepIndex] = useState(0);
   const [listening, setListening] = useState(false);
 
@@ -35,13 +35,16 @@ export default function HistoryPage() {
   const [familyDetails, setFamilyDetails] = useState<Record<string, string>>({});
   const [familyRelation, setFamilyRelation] = useState<Record<string, string>>({});
 
-  const [followUpQuestion, setFollowUpQuestion] = useState<FollowUpQuestion | null>(null);
+  const [followUpQueue, setFollowUpQueue] = useState<FollowUpQuestion[]>([]);
+  const [followUpIndex, setFollowUpIndex] = useState(0);
   const [followUpAnswer, setFollowUpAnswer] = useState("");
   const [followUpMultiSelected, setFollowUpMultiSelected] = useState<string[]>([]);
   const [followUpLoading, setFollowUpLoading] = useState(false);
+  const [followUpFetched, setFollowUpFetched] = useState(false);
   const [followUpDone, setFollowUpDone] = useState(false);
-  const [followUpUnavailable, setFollowUpUnavailable] = useState(false);
   const [followUpHistory, setFollowUpHistory] = useState<FollowUpQA[]>([]);
+
+  const followUpQuestion = followUpQueue[followUpIndex] || null;
 
   const [darshana, setDarshana] = useState<string[]>([]);
   const [sparshana, setSparshana] = useState("");
@@ -50,11 +53,11 @@ export default function HistoryPage() {
   const flow = useMemo(() => getFlow(draft?.chiefComplaintCategory || "chest_pain"), [draft]);
 
   useEffect(() => {
-    if (phase === "followup" && !followUpQuestion && !followUpLoading && !followUpDone) {
-      loadNextFollowUp();
+    if (phase === "followup" && !followUpFetched && !followUpLoading) {
+      loadFollowUpQuestions();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, followUpDone, followUpQuestion]);
+  }, [phase, followUpFetched, followUpLoading]);
 
   if (!hydrated) return null;
   if (!draft) {
@@ -100,17 +103,14 @@ export default function HistoryPage() {
     setPhase("followup");
   }
 
-  async function loadNextFollowUp() {
+  async function loadFollowUpQuestions() {
     setFollowUpLoading(true);
-    setFollowUpUnavailable(false);
-    const question = await fetchFollowUpQuestion();
+    const questions = await fetchFollowUpQuestions();
     setFollowUpLoading(false);
-    if (!question) {
-      setFollowUpDone(true);
-      if (followUpHistory.length === 0) setFollowUpUnavailable(true);
-      return;
-    }
-    setFollowUpQuestion(question);
+    setFollowUpFetched(true);
+    setFollowUpQueue(questions);
+    setFollowUpIndex(0);
+    if (questions.length === 0) setFollowUpDone(true);
   }
 
   function toggleDarshana(opt: string) {
@@ -128,14 +128,17 @@ export default function HistoryPage() {
 
   async function submitFollowUpAnswer() {
     if (!followUpQuestion) return;
-    const finalAnswer = followUpQuestion.responseType === "multiple_choice" ? followUpMultiSelected.join(", ") : followUpAnswer.trim();
-    if (!finalAnswer) return;
-    await answerFollowUp(followUpQuestion.question, finalAnswer);
-    setFollowUpHistory((h) => [...h, { question: followUpQuestion.question, answer: finalAnswer }]);
-    setFollowUpQuestion(null);
+    const finalAnswer = followUpQuestion.type === "multi_select" ? followUpMultiSelected.join(", ") : followUpAnswer.trim();
+    if (!finalAnswer && followUpQuestion.required) return;
+    if (finalAnswer) {
+      await answerFollowUp(followUpQuestion.question, finalAnswer);
+      setFollowUpHistory((h) => [...h, { question: followUpQuestion.question, answer: finalAnswer }]);
+    }
     setFollowUpAnswer("");
     setFollowUpMultiSelected([]);
-    if (followUpHistory.length + 1 >= MAX_FOLLOW_UP) setFollowUpDone(true);
+    const nextIndex = followUpIndex + 1;
+    if (nextIndex >= followUpQueue.length) setFollowUpDone(true);
+    else setFollowUpIndex(nextIndex);
   }
 
   function startVoice() {
@@ -312,7 +315,15 @@ export default function HistoryPage() {
                   <>
                     <h3 className="font-serif-display text-lg font-semibold text-stone-800 mb-5">{followUpQuestion.question}</h3>
 
-                    {followUpQuestion.responseType === "single_choice" && (
+                    {followUpQuestion.type === "yes_no" && (
+                      <div className="grid grid-cols-2 gap-2 mb-6">
+                        {["Yes", "No"].map((opt) => (
+                          <ChipButton key={opt} selected={followUpAnswer === opt} onClick={() => setFollowUpAnswer(opt)}>{opt}</ChipButton>
+                        ))}
+                      </div>
+                    )}
+
+                    {followUpQuestion.type === "single_select" && (
                       <div className="grid sm:grid-cols-2 gap-2 mb-6">
                         {followUpQuestion.options.map((opt) => (
                           <ChipButton key={opt} selected={followUpAnswer === opt} onClick={() => setFollowUpAnswer(opt)}>{opt}</ChipButton>
@@ -320,7 +331,7 @@ export default function HistoryPage() {
                       </div>
                     )}
 
-                    {followUpQuestion.responseType === "multiple_choice" && (
+                    {followUpQuestion.type === "multi_select" && (
                       <div className="grid sm:grid-cols-2 gap-2 mb-6">
                         {followUpQuestion.options.map((opt) => (
                           <ChipButton key={opt} selected={followUpMultiSelected.includes(opt)} onClick={() => toggleFollowUpMultiOption(opt)}>{opt}</ChipButton>
@@ -328,7 +339,7 @@ export default function HistoryPage() {
                       </div>
                     )}
 
-                    {followUpQuestion.responseType === "numeric_scale" && (
+                    {followUpQuestion.type === "slider" && (
                       <div className="mb-6">
                         <input
                           type="range"
@@ -345,7 +356,7 @@ export default function HistoryPage() {
                       </div>
                     )}
 
-                    {followUpQuestion.responseType === "free_text" && (
+                    {followUpQuestion.type === "short_text" && (
                       <input
                         value={followUpAnswer}
                         onChange={(e) => setFollowUpAnswer(e.target.value)}
@@ -360,11 +371,13 @@ export default function HistoryPage() {
                       <Button
                         icon={ChevronRight}
                         disabled={
-                          followUpQuestion.responseType === "multiple_choice"
-                            ? followUpMultiSelected.length === 0
-                            : followUpQuestion.responseType === "numeric_scale"
-                              ? false
-                              : !followUpAnswer.trim()
+                          !followUpQuestion.required
+                            ? false
+                            : followUpQuestion.type === "multi_select"
+                              ? followUpMultiSelected.length === 0
+                              : followUpQuestion.type === "slider"
+                                ? false
+                                : !followUpAnswer.trim()
                         }
                         onClick={submitFollowUpAnswer}
                         className="flex-1"
@@ -377,9 +390,11 @@ export default function HistoryPage() {
                 {!followUpLoading && !followUpQuestion && followUpDone && (
                   <>
                     <p className="text-sm text-stone-600 mb-6">
-                      {followUpUnavailable
-                        ? "AI follow-up questions aren't available right now — you can continue with your intake as normal."
-                        : "That's all the follow-up questions for now."}
+                      {backendError
+                        ? "AI follow-up questions couldn't be generated right now — you can continue with your intake as normal."
+                        : followUpQueue.length === 0
+                          ? "No additional follow-up questions needed for this visit."
+                          : "That's all the follow-up questions for now."}
                     </p>
                     <Button icon={ChevronRight} onClick={() => setPhase("ayush")} className="w-full">Continue</Button>
                   </>

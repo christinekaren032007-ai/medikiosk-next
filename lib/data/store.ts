@@ -71,7 +71,7 @@ interface MediKioskState {
 
   setFamilyHistory: (entries: FamilyHistoryEntry[], noFamilyHistory: boolean) => Promise<void>;
   setAyushAssessment: (assessment: AyushAssessment) => Promise<void>;
-  fetchFollowUpQuestion: () => Promise<FollowUpQuestion | null>;
+  fetchFollowUpQuestions: () => Promise<FollowUpQuestion[]>;
   answerFollowUp: (question: string, answer: string) => Promise<void>;
 
   loadScenario: (key: "chest_pain" | "fever" | "diabetes" | "ayush") => Promise<void>;
@@ -272,23 +272,24 @@ export const useMediKioskStore = create<MediKioskState>()((set, get) => ({
     }
   },
 
-  fetchFollowUpQuestion: async () => {
+  fetchFollowUpQuestions: async () => {
     const draft = get().draft;
-    if (!draft) return null;
+    if (!draft) return [];
     try {
-      const data = await api<{ result: FollowUpQuestion | null }>("/api/ai/follow-up", {
+      const data = await api<{ questions: FollowUpQuestion[]; error: string | null }>("/api/ai/follow-up", {
         method: "POST",
         body: JSON.stringify({
           chiefComplaintLabel: draft.chiefComplaintLabel,
           answers: draft.answers,
-          priorFollowUp: draft.aiFollowUp || [],
           familyHistory: draft.familyHistory,
           noFamilyHistory: draft.noFamilyHistory,
         }),
       });
-      return data.result;
-    } catch {
-      return null;
+      set({ backendError: data.error || null });
+      return data.questions || [];
+    } catch (err) {
+      set({ backendError: err instanceof Error ? err.message : "Could not reach the AI follow-up service." });
+      return [];
     }
   },
 

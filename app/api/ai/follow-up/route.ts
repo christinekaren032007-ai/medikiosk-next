@@ -1,25 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getFollowUpQuestion } from "@/lib/ai/gemini";
-import { FollowUpQA, FamilyHistoryEntry } from "@/types/clinical";
+import { getFollowUpQuestions } from "@/lib/ai/gemini";
+import { FamilyHistoryEntry } from "@/types/clinical";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
-  const { chiefComplaintLabel, answers, priorFollowUp, familyHistory, noFamilyHistory } = (await req.json()) as {
+  const { chiefComplaintLabel, answers, familyHistory, noFamilyHistory } = (await req.json()) as {
     chiefComplaintLabel: string;
     answers: Record<string, unknown>;
-    priorFollowUp: FollowUpQA[];
     familyHistory?: FamilyHistoryEntry[];
     noFamilyHistory?: boolean;
   };
 
-  const result = await getFollowUpQuestion({
-    chiefComplaintLabel,
-    answers: answers || {},
-    priorFollowUp: priorFollowUp || [],
-    familyHistory,
-    noFamilyHistory,
-  });
-
-  return NextResponse.json({ result });
+  try {
+    const { questions, error } = await getFollowUpQuestions({
+      chiefComplaintLabel,
+      answers: answers || {},
+      familyHistory,
+      noFamilyHistory,
+    });
+    return NextResponse.json({ questions, error });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : "unknown error" }, { status: 500 });
+  }
 }

@@ -35,6 +35,7 @@ export default function PatientDetailPage() {
   const [doctorNotes, setDoctorNotes] = useState("");
   const [savingConsultation, setSavingConsultation] = useState(false);
   const [consultationSaved, setConsultationSaved] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
 
   const [showRxCanvas, setShowRxCanvas] = useState(false);
   const [rxTranscription, setRxTranscription] = useState<string | null>(null);
@@ -146,8 +147,13 @@ export default function PatientDetailPage() {
   }
   async function handleRegenerate() {
     if (!p) return;
-    await regenerateSummary(p.id);
-    loadPatient();
+    setRegenerating(true);
+    try {
+      await regenerateSummary(p.id);
+      await loadPatient();
+    } finally {
+      setRegenerating(false);
+    }
   }
 
   if (notFound) {
@@ -322,7 +328,7 @@ export default function PatientDetailPage() {
       {tab === "summary" && (
         <Card className="p-5">
           <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-            <Badge tone="amber">AI-GENERATED DRAFT — Requires Healthcare Professional Review</Badge>
+            <Badge tone="stone">Structured Intake Summary — Requires Healthcare Professional Review</Badge>
             {p.doctorReview.confirmed && <Badge tone="emerald">Summary verified by physician</Badge>}
           </div>
           <div className="space-y-3 text-sm mb-5">
@@ -336,14 +342,30 @@ export default function PatientDetailPage() {
 
           {p.summary.aiGenerated && p.summary.aiNarrative && (
             <div className="mb-5 p-4 rounded-xl bg-teal-50 border border-teal-100">
-              <Badge tone="teal">AI-generated clinical summary based on patient-provided information. This is not a diagnosis.</Badge>
+              <Badge tone="teal">AI-generated summary — not a diagnosis. Final assessment is made by the physician.</Badge>
               <p className="text-sm text-stone-700 mt-3 whitespace-pre-wrap">{p.summary.aiNarrative}</p>
+            </div>
+          )}
+
+          {!p.summary.aiGenerated && p.summary.aiError && (
+            <div className="mb-5 p-4 rounded-xl bg-rose-50 border border-rose-100">
+              <Badge tone="rose">AI case summary unavailable</Badge>
+              <p className="text-sm text-stone-700 mt-3">{p.summary.aiError}</p>
+              <p className="text-xs text-stone-500 mt-2">The structured intake summary above is unaffected and still available for review. Use Regenerate to try again.</p>
+            </div>
+          )}
+
+          {!p.summary.aiGenerated && !p.summary.aiError && p.aiStatus === "processing" && (
+            <div className="mb-5 p-4 rounded-xl bg-stone-50 border border-stone-100 text-sm text-stone-500">
+              AI case summary is being generated…
             </div>
           )}
 
           <div className="flex gap-3">
             <Button onClick={handleConfirm} icon={CheckCircle2}>Confirm Summary</Button>
-            <Button variant="secondary" icon={RotateCcw} onClick={handleRegenerate}>Regenerate</Button>
+            <Button variant="secondary" icon={RotateCcw} onClick={handleRegenerate} disabled={regenerating}>
+              {regenerating ? "Regenerating…" : "Regenerate"}
+            </Button>
           </div>
         </Card>
       )}

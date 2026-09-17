@@ -8,6 +8,7 @@ export interface AISummary {
   generatedAt: string;
   aiNarrative?: string;
   aiGenerated?: boolean;
+  aiError?: string;
 }
 
 export interface Medicine {

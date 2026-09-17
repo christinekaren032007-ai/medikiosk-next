@@ -1,6 +1,7 @@
 import { supabaseServer } from "@/lib/supabase/server";
 import { getFlow } from "@/lib/ai/historyEngine";
 import { buildSummary } from "@/lib/ai/summaryEngine";
+import { getCaseSummary } from "@/lib/ai/gemini";
 import { ClinicalHistory, ComplaintCategory, FamilyHistoryEntry, FollowUpQA, InterviewAnswers } from "@/types/clinical";
 import { DraftPatient, PatientRecord } from "@/types/patient";
 import { AISummary, Consultation, Medicine } from "@/types/ai";
@@ -339,7 +340,9 @@ export async function confirmAiSummary(consultationId: string) {
 export async function regenerateAiSummary(consultationId: string) {
   const { data, error: fetchError } = await supabaseServer
     .from("consultations")
-    .select("chief_complaint, chief_complaint_category, documents, intake_answers ( question, answer, answer_type ), ai_summaries ( follow_up_questions )")
+    .select(
+      "chief_complaint, chief_complaint_category, documents, patients ( name, age, gender ), intake_answers ( question, answer, answer_type ), ayush_assessments ( darshana, sparshana, prashna ), ai_summaries ( follow_up_questions )"
+    )
     .eq("id", consultationId)
     .single();
   if (fetchError) throw new Error(fetchError.message);
@@ -347,6 +350,9 @@ export async function regenerateAiSummary(consultationId: string) {
   const category: ComplaintCategory = data.chief_complaint_category;
   const { answers, familyHistory, noFamilyHistory } = reconstructAnswers(category, data.intake_answers || []);
   const aiSummaryRow = one<any>(data.ai_summaries);
+  const ayushRow = one<any>(data.ayush_assessments);
+  const patient = one<any>(data.patients) || {};
+  const documents = (data.documents as DocumentRecord[]) || [];
 
   const history: ClinicalHistory = {
     chiefComplaintCategory: category,
@@ -355,16 +361,31 @@ export async function regenerateAiSummary(consultationId: string) {
     familyHistory,
     noFamilyHistory,
     aiFollowUp: aiSummaryRow?.follow_up_questions || [],
+    ayushAssessment: ayushRow ? { darshana: ayushRow.darshana || [], sparshana: ayushRow.sparshana || "", prashna: ayushRow.prashna || "" } : undefined,
   };
-  const summary = buildSummary(history, (data.documents as DocumentRecord[]) || []);
+  const summary = buildSummary(history, documents);
+
+  // Regeneration is a direct, doctor-initiated action awaiting a response,
+  // so the AI case summary is generated synchronously here (unlike the
+  // background enrichment at first submission) — a visible aiError is
+  // saved on failure rather than silently keeping the old summary's AI text.
+  const { narrative, error: aiError } = await getCaseSummary({
+    patient: { name: patient.name ?? "Guest Patient", age: patient.age ?? "—", gender: patient.gender ?? "—" },
+    history,
+    documents,
+  });
+
+  const updatedSummary = narrative
+    ? { ...summary, aiNarrative: narrative, aiGenerated: true, aiError: undefined }
+    : { ...summary, aiGenerated: false, aiError: aiError || "Gemini did not return a summary." };
 
   const { error } = await supabaseServer
     .from("ai_summaries")
-    .update({ summary, confirmed: false, confirmed_at: null })
+    .update({ summary: updatedSummary, confirmed: false, confirmed_at: null })
     .eq("consultation_id", consultationId);
   if (error) throw new Error(error.message);
 
-  return { history, documents: (data.documents as DocumentRecord[]) || [] };
+  return { history, documents };
 }
 
 export async function saveDoctorAssessment(

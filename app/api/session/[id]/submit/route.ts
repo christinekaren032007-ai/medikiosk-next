@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse, unstable_after as after } from "next/server";
 import { supabaseServer } from "@/lib/supabase/server";
-import { getClinicalNarrative } from "@/lib/ai/gemini";
+import { getCaseSummary } from "@/lib/ai/gemini";
 import { findOrCreatePatientId, insertConsultationTree, markAiSummaryReady } from "@/lib/server/db";
 
 export const dynamic = "force-dynamic";
@@ -25,20 +25,30 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     .eq("id", id);
   if (sessionError) return NextResponse.json({ error: sessionError.message }, { status: 500 });
 
-  // AI narrative is a best-effort enrichment on top of the rule-based summary above
-  // (which already ran and was saved) — generated in the background after responding
-  // so the patient is never kept waiting on it, and never blocked if it fails.
+  // The AI case summary is generated in the background after responding so
+  // the patient is never kept waiting on it. The rule-based `summary` above
+  // (already saved) stays visible to the doctor as the structured intake
+  // data regardless of what happens here. On failure we record a visible
+  // aiError rather than silently leaving the doctor thinking AI ran.
   after(async () => {
     try {
-      const aiNarrative = await getClinicalNarrative({ history, documents: draft.documents });
-      if (aiNarrative) {
-        await markAiSummaryReady(consultationId, { ...summary, aiNarrative, aiGenerated: true });
+      const { narrative, error } = await getCaseSummary({
+        patient: { name: draft.name, age: draft.age, gender: draft.gender },
+        history,
+        documents: draft.documents,
+      });
+      if (narrative) {
+        await markAiSummaryReady(consultationId, { ...summary, aiNarrative: narrative, aiGenerated: true, aiError: undefined });
       } else {
-        await markAiSummaryReady(consultationId, summary);
+        await markAiSummaryReady(consultationId, { ...summary, aiGenerated: false, aiError: error || "Gemini did not return a summary." });
       }
     } catch (err) {
-      console.error("[ai-narrative] background enrichment failed:", err);
-      await markAiSummaryReady(consultationId, summary).catch(() => {});
+      console.error("[ai-case-summary] background generation failed:", err);
+      await markAiSummaryReady(consultationId, {
+        ...summary,
+        aiGenerated: false,
+        aiError: err instanceof Error ? err.message : "AI case summary generation failed unexpectedly.",
+      }).catch(() => {});
     }
   });
 
