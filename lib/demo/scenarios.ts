@@ -10,8 +10,8 @@ export interface ScenarioPreset {
   answers: InterviewAnswers;
 }
 
-// The primary judge demo (section 12 / 46 of the brief): Ravi Kumar, chest pain,
-// severe + breathlessness -> triggers the red-flag workflow.
+// Demo scenario presets for the Demo Controls panel — pre-filled patients
+// covering a spread of chief complaints, including the AYUSH wellness visit.
 export const SCENARIOS: Record<"chest_pain" | "fever" | "diabetes" | "ayush", ScenarioPreset> = {
   chest_pain: {
     key: "chest_pain", name: "Ravi Kumar", age: 52, gender: "Male", abhaId: "XX-XXXX-XXXX-1189", ccLabel: "Chest pain",
