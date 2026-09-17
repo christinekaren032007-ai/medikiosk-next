@@ -134,9 +134,11 @@ Chief complaint: ${history.chiefComplaintLabel}
 Structured answers: ${JSON.stringify(history.answers)}
 Family medical history: ${JSON.stringify(history.familyHistory || [])}
 Follow-up questions and answers: ${JSON.stringify(history.aiFollowUp || [])}
+AYUSH assessment (Trividha Pariksha, patient-reported): ${JSON.stringify(history.ayushAssessment || null)}
+Returning patient with previous records used: ${history.returningPatient && history.previousRecordUsed ? "yes" : "no"}
 Uploaded documents: ${JSON.stringify(documents.map((d) => ({ type: d.documentType, fields: d.fields })))}
 
-Organize the summary into short labeled sections where the information is available (Chief Complaint, Reported Symptoms, Duration, Relevant Medical History, Family Medical History, Allergies, Current Medications, Follow-up Findings). Omit sections with no information rather than guessing. Keep it factual and concise — this is for a doctor to quickly review, not a patient-facing document.`;
+Organize the summary into short labeled sections where the information is available (Chief Complaint, Reported Symptoms, Duration, Relevant Medical History, Family Medical History, AYUSH Assessment, Allergies, Current Medications, Follow-up Findings). Omit sections with no information rather than guessing. Keep it factual and concise — this is for a doctor to quickly review, not a patient-facing document.`;
 
   try {
     const result = await withTimeout(model.generateContent(prompt), NARRATIVE_TIMEOUT_MS);

@@ -11,6 +11,7 @@ import { t } from "@/lib/i18n/translations";
 export default function CompletePage() {
   const router = useRouter();
   const lastToken = useMediKioskStore((s) => s.lastToken);
+  const lastPatientId = useMediKioskStore((s) => s.lastPatientId);
   const resetDraft = useMediKioskStore((s) => s.resetDraft);
   const lang = useMediKioskStore((s) => s.lang);
 
@@ -37,9 +38,10 @@ export default function CompletePage() {
           <div className="text-xs text-stone-400 mb-6">Your token number</div>
           <p className="text-sm text-stone-600 mb-4">{t(lang, "proceed")}</p>
           <Badge tone="stone">ABDM/FHIR Integration — Demo Simulation</Badge>
-          <div className="mt-8 flex justify-center gap-3">
+          <div className="mt-8 flex flex-wrap justify-center gap-3">
             <Button variant="ghost" onClick={startOver}>Start a new intake</Button>
             <Button variant="secondary" onClick={() => router.push("/doctor")}>Open Doctor Dashboard</Button>
+            {lastPatientId && <Button onClick={() => router.push("/patient/treatment")}>View My Treatment Plan</Button>}
           </div>
         </Card>
       </div>

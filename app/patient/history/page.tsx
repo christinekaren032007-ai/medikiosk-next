@@ -2,19 +2,20 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { UserCircle2, Sparkles, Mic, ChevronLeft, ChevronRight, AlertTriangle, PhoneCall, Users, Loader2 } from "lucide-react";
+import { UserCircle2, Sparkles, Mic, ChevronLeft, ChevronRight, Users, Loader2, Leaf } from "lucide-react";
 import { Card, Badge, ChipButton } from "@/components/shared/Primitives";
 import Button from "@/components/shared/Button";
 import ProgressSteps from "@/components/shared/ProgressSteps";
 import FloatingNav from "@/components/shared/FloatingNav";
 import { useMediKioskStore } from "@/lib/data/store";
 import { getFlow } from "@/lib/ai/historyEngine";
-import { evaluateRedFlag } from "@/lib/ai/redFlagEngine";
 import { FAMILY_CONDITIONS, RELATION_OPTIONS, FollowUpQA, FollowUpQuestion } from "@/types/clinical";
 
-const STEPS = ["Identify", "Consent", "History", "Documents", "Review", "Complete"];
+const STEPS = ["Visit", "Consent", "Records", "Complaint", "Intake", "Documents", "Review", "Complete"];
 const MAX_FOLLOW_UP = 3;
 const NO_FAMILY_HISTORY = "No known family medical history";
+const DARSHANA_OPTIONS = ["Skin changes noticed", "Tongue coating or discoloration", "Visible swelling", "Unusual paleness", "Nothing unusual noticed"];
+const SPARSHANA_OPTIONS = ["Skin feels dry / rough", "Skin feels warm or oily", "Body feels heavy or cold to touch", "Feels normal"];
 
 export default function HistoryPage() {
   const router = useRouter();
@@ -22,16 +23,14 @@ export default function HistoryPage() {
   const draft = useMediKioskStore((s) => s.draft);
   const answerField = useMediKioskStore((s) => s.answerField);
   const syncDraft = useMediKioskStore((s) => s.syncDraft);
-  const ayushMode = useMediKioskStore((s) => s.ayushMode);
-  const toggleAyush = useMediKioskStore((s) => s.toggleAyush);
   const setFamilyHistory = useMediKioskStore((s) => s.setFamilyHistory);
+  const setAyushAssessment = useMediKioskStore((s) => s.setAyushAssessment);
   const fetchFollowUpQuestion = useMediKioskStore((s) => s.fetchFollowUpQuestion);
   const answerFollowUp = useMediKioskStore((s) => s.answerFollowUp);
   const [stepIndex, setStepIndex] = useState(0);
   const [listening, setListening] = useState(false);
-  const [staffCalled, setStaffCalled] = useState(false);
 
-  const [phase, setPhase] = useState<"questions" | "family" | "followup">("questions");
+  const [phase, setPhase] = useState<"questions" | "family" | "followup" | "ayush">("questions");
   const [familySelected, setFamilySelected] = useState<string[]>([]);
   const [familyDetails, setFamilyDetails] = useState<Record<string, string>>({});
   const [familyRelation, setFamilyRelation] = useState<Record<string, string>>({});
@@ -44,7 +43,11 @@ export default function HistoryPage() {
   const [followUpUnavailable, setFollowUpUnavailable] = useState(false);
   const [followUpHistory, setFollowUpHistory] = useState<FollowUpQA[]>([]);
 
-  const flow = useMemo(() => getFlow(ayushMode ? "ayush" : draft?.chiefComplaintCategory || "chest_pain"), [ayushMode, draft]);
+  const [darshana, setDarshana] = useState<string[]>([]);
+  const [sparshana, setSparshana] = useState("");
+  const [prashna, setPrashna] = useState("");
+
+  const flow = useMemo(() => getFlow(draft?.chiefComplaintCategory || "chest_pain"), [draft]);
 
   useEffect(() => {
     if (phase === "followup" && !followUpQuestion && !followUpLoading && !followUpDone) {
@@ -61,7 +64,6 @@ export default function HistoryPage() {
 
   const field = flow[stepIndex];
   const val = draft.answers[field.id];
-  const redFlag = evaluateRedFlag(draft.chiefComplaintCategory, draft.answers);
 
   async function next() {
     await syncDraft();
@@ -71,7 +73,7 @@ export default function HistoryPage() {
   async function prev() {
     await syncDraft();
     if (stepIndex > 0) setStepIndex((i) => i - 1);
-    else router.push("/patient/consent");
+    else router.push("/patient/complaint");
   }
 
   function toggleFamilyCondition(condition: string) {
@@ -109,6 +111,15 @@ export default function HistoryPage() {
       return;
     }
     setFollowUpQuestion(question);
+  }
+
+  function toggleDarshana(opt: string) {
+    setDarshana((prev) => (prev.includes(opt) ? prev.filter((o) => o !== opt) : [...prev, opt]));
+  }
+
+  async function continueFromAyush() {
+    await setAyushAssessment({ darshana, sparshana, prashna });
+    router.push("/patient/documents");
   }
 
   function toggleFollowUpMultiOption(opt: string) {
@@ -155,21 +166,10 @@ export default function HistoryPage() {
         <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
           <div>
             <div className="font-serif-display text-2xl font-semibold text-teal-900">Rapha</div>
-            <div className="text-xs text-stone-500">Clinical Intake Assistant</div>
+            <div className="text-xs text-stone-500">AYUSH Clinical Case-Taking Assistant</div>
           </div>
-          <ProgressSteps steps={STEPS} activeIndex={2} />
+          <ProgressSteps steps={STEPS} activeIndex={4} />
         </div>
-
-        {redFlag.triggered && (
-          <Card className="p-5 mb-5 border-2 border-rose-400 bg-rose-50">
-            <div className="flex items-center gap-2 text-rose-700 font-bold text-sm mb-1"><AlertTriangle size={18} /> POSSIBLE EMERGENCY SYMPTOMS</div>
-            <p className="text-sm text-rose-700 mb-3">{redFlag.reason} Please do not wait in the normal queue. A healthcare staff member has been notified.</p>
-            <div className="flex gap-3">
-              <Button variant="danger" icon={PhoneCall} onClick={() => setStaffCalled(true)}>{staffCalled ? "Staff notified ✓" : "Call Staff"}</Button>
-              <Button variant="secondary" disabled={!staffCalled}>Continue Only With Staff Approval</Button>
-            </div>
-          </Card>
-        )}
 
         <div className="grid lg:grid-cols-[1fr_1.4fr_1fr] gap-4">
           <Card className="p-5 h-fit">
@@ -177,9 +177,12 @@ export default function HistoryPage() {
             <div className="text-xs text-stone-500 mb-4">{draft.age !== "—" ? `${draft.age} yrs • ${draft.gender}` : "Guest patient"}</div>
             <div className="text-xs font-semibold text-stone-500 mb-2">CHIEF COMPLAINT</div>
             <Badge tone="teal">{draft.chiefComplaintLabel}</Badge>
-            <label className="flex items-center gap-2 mt-6 text-xs text-stone-500">
-              <input type="checkbox" checked={ayushMode} onChange={() => { toggleAyush(); setStepIndex(0); }} /> AYUSH history mode
-            </label>
+            {draft.returningPatient && (
+              <div className="mt-4 text-xs text-stone-500">
+                <Badge tone="stone">Returning patient</Badge>{" "}
+                {draft.previousRecordUsed ? "· using previous records (demo)" : "· previous records not used"}
+              </div>
+            )}
           </Card>
 
           <Card className="p-6">
@@ -378,9 +381,43 @@ export default function HistoryPage() {
                         ? "AI follow-up questions aren't available right now — you can continue with your intake as normal."
                         : "That's all the follow-up questions for now."}
                     </p>
-                    <Button icon={ChevronRight} onClick={() => router.push("/patient/documents")} className="w-full">Continue</Button>
+                    <Button icon={ChevronRight} onClick={() => setPhase("ayush")} className="w-full">Continue</Button>
                   </>
                 )}
+              </>
+            )}
+
+            {phase === "ayush" && (
+              <>
+                <div className="flex items-center gap-2 mb-4 text-xs text-teal-700 font-semibold"><Leaf size={14} /> A few AYUSH case-taking questions</div>
+                <h3 className="font-serif-display text-lg font-semibold text-stone-800 mb-2">Have you noticed any of these lately?</h3>
+                <p className="text-sm text-stone-500 mb-5">These help your doctor with a more complete Ayurvedic assessment. Select any that apply — it's optional.</p>
+                <div className="grid sm:grid-cols-2 gap-2 mb-6">
+                  {DARSHANA_OPTIONS.map((opt) => (
+                    <ChipButton key={opt} selected={darshana.includes(opt)} onClick={() => toggleDarshana(opt)}>{opt}</ChipButton>
+                  ))}
+                </div>
+
+                <h3 className="font-serif-display text-lg font-semibold text-stone-800 mb-2">How does your body feel generally right now?</h3>
+                <div className="grid sm:grid-cols-2 gap-2 mb-6">
+                  {SPARSHANA_OPTIONS.map((opt) => (
+                    <ChipButton key={opt} selected={sparshana === opt} onClick={() => setSparshana(opt)}>{opt}</ChipButton>
+                  ))}
+                </div>
+
+                <h3 className="font-serif-display text-lg font-semibold text-stone-800 mb-2">Anything else you'd like to mention?</h3>
+                <textarea
+                  value={prashna}
+                  onChange={(e) => setPrashna(e.target.value)}
+                  rows={2}
+                  placeholder="Optional — type your answer…"
+                  className="w-full px-4 py-3 rounded-xl border border-stone-200 text-sm mb-6 focus:outline-none focus:border-teal-400"
+                />
+
+                <div className="flex gap-3">
+                  <Button variant="secondary" icon={ChevronLeft} onClick={() => setPhase("followup")}>Back</Button>
+                  <Button icon={ChevronRight} onClick={continueFromAyush} className="flex-1">Continue</Button>
+                </div>
               </>
             )}
           </Card>

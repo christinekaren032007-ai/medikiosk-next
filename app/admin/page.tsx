@@ -34,7 +34,7 @@ export default function AdminPage() {
     { label: "Average Intake", value: "6m 42s" },
     { label: "Documents Processed", value: "384" },
     { label: "Summaries Ready", value: String(queue.filter((q) => q.aiStatus === "ready").length) },
-    { label: "Priority Alerts", value: String(queue.filter((q) => q.redFlag.triggered).length) },
+    { label: "Returning Patients", value: String(queue.filter((q) => q.history.returningPatient).length) },
   ];
 
   return (

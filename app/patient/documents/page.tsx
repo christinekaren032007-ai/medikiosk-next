@@ -11,7 +11,7 @@ import { useMediKioskStore } from "@/lib/data/store";
 import { PROCESSING_STAGES } from "@/lib/ai/documentEngine";
 import { ProcessingStage } from "@/types/document";
 
-const STEPS = ["Identify", "Consent", "History", "Documents", "Review", "Complete"];
+const STEPS = ["Visit", "Consent", "Records", "Complaint", "Intake", "Documents", "Review", "Complete"];
 const STAGE_LABEL: Record<string, string> = {
   uploading: "Uploading…",
   ocr: "OCR processing…",
@@ -54,7 +54,7 @@ export default function DocumentsPage() {
             <div className="font-serif-display text-2xl font-semibold text-teal-900">Rapha</div>
             <div className="text-xs text-stone-500">Clinical Intake Assistant</div>
           </div>
-          <ProgressSteps steps={STEPS} activeIndex={3} />
+          <ProgressSteps steps={STEPS} activeIndex={5} />
         </div>
 
         <Card className="p-8">

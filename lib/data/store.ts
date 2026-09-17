@@ -1,10 +1,18 @@
 "use client";
 
 import { create } from "zustand";
-import { ComplaintCategory, FamilyHistoryEntry, FollowUpQA, FollowUpQuestion } from "@/types/clinical";
+import { AyushAssessment, ComplaintCategory, FamilyHistoryEntry, FollowUpQA, FollowUpQuestion } from "@/types/clinical";
 import { DraftPatient, PatientRecord } from "@/types/patient";
 import { Consultation } from "@/types/ai";
 import { Lang } from "@/lib/i18n/translations";
+
+export type VisitType = "new" | "returning" | null;
+export interface PendingIdentity {
+  name: string;
+  age: number | "—";
+  gender: "Male" | "Female" | "—";
+  abhaId: string | null;
+}
 
 async function api<T = any>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
@@ -23,6 +31,17 @@ interface MediKioskState {
   queue: PatientRecord[];
   draft: DraftPatient | null;
   lastToken: string | null;
+  lastPatientId: string | null;
+
+  // Pre-draft kiosk flow state: captured before a complaint is chosen (and
+  // therefore before a draft exists), then folded into the draft once
+  // startPatient() creates it.
+  visitType: VisitType;
+  pendingIdentity: PendingIdentity | null;
+  previousRecordUsed: boolean;
+  setVisitType: (v: VisitType) => void;
+  setPendingIdentity: (i: PendingIdentity) => void;
+  setPreviousRecordUsed: (used: boolean) => void;
 
   initSession: () => Promise<void>;
   setLang: (lang: Lang) => void;
@@ -37,6 +56,7 @@ interface MediKioskState {
   resetDraft: () => Promise<void>;
 
   setFamilyHistory: (entries: FamilyHistoryEntry[], noFamilyHistory: boolean) => Promise<void>;
+  setAyushAssessment: (assessment: AyushAssessment) => Promise<void>;
   fetchFollowUpQuestion: () => Promise<FollowUpQuestion | null>;
   answerFollowUp: (question: string, answer: string) => Promise<void>;
 
@@ -58,6 +78,14 @@ export const useMediKioskStore = create<MediKioskState>()((set, get) => ({
   queue: [],
   draft: null,
   lastToken: null,
+  lastPatientId: null,
+
+  visitType: null,
+  pendingIdentity: null,
+  previousRecordUsed: false,
+  setVisitType: (v) => set({ visitType: v }),
+  setPendingIdentity: (i) => set({ pendingIdentity: i }),
+  setPreviousRecordUsed: (used) => set({ previousRecordUsed: used }),
 
   initSession: async () => {
     let sessionId = typeof window !== "undefined" ? localStorage.getItem("mk_session_id") : null;
@@ -99,7 +127,24 @@ export const useMediKioskStore = create<MediKioskState>()((set, get) => ({
       method: "POST",
       body: JSON.stringify({ category }),
     });
-    set({ draft: data.draft });
+    let draft = data.draft;
+
+    // Fold in whatever the pre-draft welcome/visit-type/previous-records
+    // screens already captured, now that a draft exists to attach it to.
+    const { pendingIdentity, visitType, previousRecordUsed } = get();
+    if (pendingIdentity || visitType) {
+      const patch = {
+        ...(pendingIdentity || {}),
+        returningPatient: visitType === "returning",
+        previousRecordUsed: visitType === "returning" ? previousRecordUsed : false,
+      };
+      const patched = await api<{ draft: DraftPatient }>(`/api/session/${sessionId}/draft`, {
+        method: "PATCH",
+        body: JSON.stringify(patch),
+      });
+      draft = patched.draft;
+    }
+    set({ draft });
   },
 
   setIdentity: (name, age, gender, abhaId) => {
@@ -128,14 +173,14 @@ export const useMediKioskStore = create<MediKioskState>()((set, get) => ({
   submitDraft: async () => {
     const sessionId = get().sessionId;
     if (!sessionId) return "";
-    const data = await api<{ token: string }>(`/api/session/${sessionId}/submit`, { method: "POST" });
-    set({ draft: null, lastToken: data.token });
+    const data = await api<{ token: string; patientId: string }>(`/api/session/${sessionId}/submit`, { method: "POST" });
+    set({ draft: null, lastToken: data.token, lastPatientId: data.patientId, visitType: null, pendingIdentity: null, previousRecordUsed: false });
     return data.token;
   },
 
   resetDraft: async () => {
     const sessionId = get().sessionId;
-    set({ draft: null });
+    set({ draft: null, visitType: null, pendingIdentity: null, previousRecordUsed: false });
     if (sessionId) await api(`/api/session/${sessionId}/draft`, { method: "DELETE" });
   },
 
@@ -143,6 +188,12 @@ export const useMediKioskStore = create<MediKioskState>()((set, get) => ({
     set((s) => (s.draft ? { draft: { ...s.draft, familyHistory: entries, noFamilyHistory } } : {}));
     const sessionId = get().sessionId;
     if (sessionId) await api(`/api/session/${sessionId}/draft`, { method: "PATCH", body: JSON.stringify({ familyHistory: entries, noFamilyHistory }) });
+  },
+
+  setAyushAssessment: async (assessment) => {
+    set((s) => (s.draft ? { draft: { ...s.draft, ayushAssessment: assessment } } : {}));
+    const sessionId = get().sessionId;
+    if (sessionId) await api(`/api/session/${sessionId}/draft`, { method: "PATCH", body: JSON.stringify({ ayushAssessment: assessment }) });
   },
 
   fetchFollowUpQuestion: async () => {
@@ -181,7 +232,7 @@ export const useMediKioskStore = create<MediKioskState>()((set, get) => ({
       method: "POST",
       body: JSON.stringify({ key }),
     });
-    set({ draft: data.draft, ayushMode: data.ayushMode });
+    set({ draft: data.draft, ayushMode: data.ayushMode, visitType: null, pendingIdentity: null, previousRecordUsed: false });
   },
 
   fetchQueue: async () => {
@@ -209,6 +260,16 @@ export const useMediKioskStore = create<MediKioskState>()((set, get) => ({
       method: "POST",
       body: JSON.stringify({ sessionId }),
     });
-    set({ queue: data.queue, draft: null, lastToken: null, ayushMode: false, lang: "en" });
+    set({
+      queue: data.queue,
+      draft: null,
+      lastToken: null,
+      lastPatientId: null,
+      ayushMode: false,
+      lang: "en",
+      visitType: null,
+      pendingIdentity: null,
+      previousRecordUsed: false,
+    });
   },
 }));

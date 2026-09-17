@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ChevronLeft, FileText, Edit3, Check, CheckCircle2, RotateCcw, ShieldCheck, Code2, Plus, Trash2, ClipboardPlus, PenLine, AlertTriangle } from "lucide-react";
+import { ChevronLeft, FileText, Edit3, Check, CheckCircle2, RotateCcw, ShieldCheck, Code2, Plus, Trash2, ClipboardPlus, PenLine, AlertTriangle, Leaf } from "lucide-react";
 import { Card, Badge } from "@/components/shared/Primitives";
 import Button from "@/components/shared/Button";
 import FloatingNav from "@/components/shared/FloatingNav";
@@ -169,7 +169,11 @@ export default function PatientDetailPage() {
         <div className="w-12 h-12 rounded-full bg-teal-700 text-white flex items-center justify-center font-semibold">{p.name?.[0]}</div>
         <div>
           <div className="font-semibold text-lg text-stone-800">{p.name} <span className="text-stone-400 font-normal text-sm">· {p.age} yrs · {p.gender}</span></div>
-          <div className="text-xs text-stone-400">Token {p.token} {p.priority === "high" && <Badge tone="rose">🔴 Priority</Badge>}</div>
+          <div className="text-xs text-stone-400 flex items-center gap-2">
+            Token {p.token}
+            <Badge tone="stone">{p.history.returningPatient ? "Returning patient" : "New patient"}</Badge>
+            {p.history.returningPatient && p.history.previousRecordUsed && <Badge tone="teal">Previous records used (demo)</Badge>}
+          </div>
         </div>
       </div>
 
@@ -236,6 +240,44 @@ export default function PatientDetailPage() {
                     <div className="text-stone-500">{qa.question}</div>
                     <div className="font-medium">{qa.answer}</div>
                   </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </Card>
+      )}
+
+      {tab === "history" && (p.history.ayushAssessment || p.history.chiefComplaintCategory === "ayush") && (
+        <Card className="p-5 mt-4">
+          <div className="flex items-center gap-2 mb-4 text-sm font-semibold text-stone-800"><Leaf size={16} className="text-teal-700" /> AYUSH Assessment</div>
+
+          {p.history.ayushAssessment && (
+            <div className="space-y-3 mb-4">
+              <div className="text-xs font-semibold text-stone-500 mb-2">TRIVIDHA PARIKSHA</div>
+              <div className="grid sm:grid-cols-2 gap-3 text-sm">
+                <div><div className="text-xs text-stone-400">Darshana (visual observation)</div><div className="font-medium">{p.history.ayushAssessment.darshana.length ? p.history.ayushAssessment.darshana.join(", ") : "Nothing unusual noticed"}</div></div>
+                <div><div className="text-xs text-stone-400">Sparshana (touch / tactile)</div><div className="font-medium">{p.history.ayushAssessment.sparshana || "Not reported"}</div></div>
+              </div>
+              {p.history.ayushAssessment.prashna && (
+                <div><div className="text-xs text-stone-400">Prashna (patient's own words)</div><div className="text-sm font-medium">{p.history.ayushAssessment.prashna}</div></div>
+              )}
+            </div>
+          )}
+
+          {p.history.chiefComplaintCategory === "ayush" && (
+            <div>
+              <div className="text-xs font-semibold text-stone-500 mb-2">DASHAVIDHA PARIKSHA</div>
+              <div className="grid sm:grid-cols-2 gap-3 text-sm">
+                {[
+                  ["Prakriti (constitution)", "prakriti"], ["Vikriti (current imbalance)", "vikriti"], ["Agni (digestive fire)", "agni"],
+                  ["Koshtha (bowel pattern)", "koshtha"], ["Ahara (diet)", "ahara"], ["Vihara (lifestyle)", "vihara"],
+                  ["Nidana (triggers)", "nidana"], ["Sara (tissue vitality)", "sara"], ["Samhanana (body build)", "samhanana"],
+                  ["Pramana (physical measurements)", "pramana"], ["Satmya (suitability)", "satmya"], ["Sattva (mental resilience)", "sattva"],
+                  ["Ahara Shakti (appetite strength)", "aharaShakti"], ["Vyayama Shakti (exercise capacity)", "vyayamaShakti"], ["Vaya (life stage)", "vaya"],
+                ].map(([label, key]) => (
+                  p.history.answers[key] ? (
+                    <div key={key}><div className="text-xs text-stone-400">{label}</div><div className="font-medium">{String(p.history.answers[key])}</div></div>
+                  ) : null
                 ))}
               </div>
             </div>

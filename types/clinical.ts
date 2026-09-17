@@ -11,6 +11,11 @@ export type ComplaintCategory =
   | "injury_pain"
   | "diarrhea"
   | "skin_problem"
+  | "digestive_problem"
+  | "joint_pain"
+  | "sleep_problem"
+  | "stress_fatigue"
+  | "menstrual_concern"
   | "other";
 
 export type InterviewFieldType = "choice" | "multi" | "slider" | "text";
@@ -62,6 +67,19 @@ export interface FollowUpQuestion {
   options: string[];
 }
 
+/**
+ * A simplified, patient-facing capture of Trividha Pariksha (the three
+ * classical AYUSH examination methods). Darshana (visual observation) and
+ * Sparshana (touch/tactile sensation) are rephrased as self-reported
+ * questions since the patient — not the physician — is answering them at
+ * the kiosk. The doctor dashboard shows these under their AYUSH terms.
+ */
+export interface AyushAssessment {
+  darshana: string[];
+  sparshana: string;
+  prashna: string;
+}
+
 export interface ClinicalHistory {
   chiefComplaintCategory: ComplaintCategory;
   chiefComplaintLabel: string;
@@ -75,4 +93,7 @@ export interface ClinicalHistory {
   aiFollowUp?: FollowUpQA[];
   personalHistory?: string;
   reviewOfSystems?: string;
+  ayushAssessment?: AyushAssessment;
+  returningPatient?: boolean;
+  previousRecordUsed?: boolean;
 }

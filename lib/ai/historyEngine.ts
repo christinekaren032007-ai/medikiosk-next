@@ -1,19 +1,43 @@
 import { ComplaintCategory, InterviewField } from "@/types/clinical";
 
 export const CHIEF_COMPLAINTS: { key: ComplaintCategory; label: string }[] = [
-  { key: "chest_pain", label: "Chest pain" },
   { key: "fever", label: "Fever" },
-  { key: "cough", label: "Cough" },
+  { key: "cough", label: "Cough / cold" },
   { key: "headache", label: "Headache" },
+  { key: "digestive_problem", label: "Digestive problems" },
+  { key: "joint_pain", label: "Joint / muscle pain" },
+  { key: "skin_problem", label: "Skin problems" },
+  { key: "sleep_problem", label: "Sleep problems" },
+  { key: "stress_fatigue", label: "Stress / fatigue" },
+  { key: "menstrual_concern", label: "Menstrual concerns" },
+  { key: "chest_pain", label: "Chest pain" },
   { key: "abdominal_pain", label: "Abdominal pain" },
   { key: "nausea_vomiting", label: "Nausea / Vomiting" },
   { key: "breathlessness", label: "Breathing difficulty" },
   { key: "injury_pain", label: "Injury / Pain" },
   { key: "diarrhea", label: "Diarrhea" },
-  { key: "skin_problem", label: "Skin problem" },
   { key: "diabetes", label: "Follow-up / fatigue" },
   { key: "ayush", label: "General wellness (Ayurveda)" },
   { key: "other", label: "Other" },
+];
+
+/**
+ * The curated set shown on the patient-facing complaint screen — broader and
+ * AYUSH-oriented, per the case-taking focus of the product. CHIEF_COMPLAINTS
+ * above stays the canonical label lookup (doctor views, seed/demo data,
+ * scenarios) so older categories keep working everywhere else.
+ */
+export const PATIENT_COMPLAINT_OPTIONS: ComplaintCategory[] = [
+  "fever",
+  "cough",
+  "headache",
+  "digestive_problem",
+  "joint_pain",
+  "skin_problem",
+  "sleep_problem",
+  "stress_fatigue",
+  "menstrual_concern",
+  "other",
 ];
 
 /**
@@ -66,6 +90,32 @@ export const FLOWS: Partial<Record<ComplaintCategory, InterviewField[]>> = {
     { id: "trigger", type: "choice", question: "When is it most noticeable?", options: ["At rest", "On exertion / walking", "Lying flat", "All the time"] },
     { id: "severity", type: "slider", question: "How severe is the breathlessness, from 0 to 10?" },
     { id: "associated", type: "multi", question: "Any of these along with it?", options: ["Chest pain", "Cough", "Swelling in legs", "Palpitations", "None"] },
+  ],
+  digestive_problem: [
+    { id: "pattern", type: "multi", question: "What are you experiencing?", options: ["Bloating", "Acidity / heartburn", "Constipation", "Loose motions", "Loss of appetite", "None"] },
+    { id: "onset", type: "choice", question: "When did this start?", options: ["Today", "2-3 days ago", "More than a week ago", "Ongoing for a while"] },
+    { id: "severity", type: "slider", question: "How severe is the discomfort, from 0 to 10?" },
+  ],
+  joint_pain: [
+    { id: "onset", type: "choice", question: "When did the pain start?", options: ["Today", "2-3 days ago", "More than a week ago", "Ongoing for a while"] },
+    { id: "location", type: "choice", question: "Where is the pain?", options: ["Knees", "Back", "Hands / wrists", "Shoulders", "Multiple joints", "Other"] },
+    { id: "character", type: "choice", question: "What does it feel like?", options: ["Aching", "Stiffness", "Swelling", "Sharp pain"] },
+    { id: "severity", type: "slider", question: "How severe is the pain, from 0 to 10?" },
+  ],
+  sleep_problem: [
+    { id: "pattern", type: "choice", question: "What best describes your sleep difficulty?", options: ["Trouble falling asleep", "Waking up often", "Waking too early", "Not feeling rested", "Sleeping too much"] },
+    { id: "duration", type: "choice", question: "How long has this been going on?", options: ["A few days", "2-3 weeks", "More than a month", "Ongoing for a long time"] },
+    { id: "severity", type: "slider", question: "How much is this affecting your daily life, from 0 to 10?" },
+  ],
+  stress_fatigue: [
+    { id: "pattern", type: "choice", question: "What are you noticing most?", options: ["Low energy / tiredness", "Feeling anxious or on edge", "Low mood", "Trouble concentrating", "A mix of these"] },
+    { id: "duration", type: "choice", question: "How long has this been going on?", options: ["A few days", "2-3 weeks", "More than a month", "Several months or more"] },
+    { id: "severity", type: "slider", question: "How much is this affecting your daily life, from 0 to 10?" },
+  ],
+  menstrual_concern: [
+    { id: "pattern", type: "choice", question: "What best describes your concern?", options: ["Irregular cycles", "Heavy or prolonged bleeding", "Painful periods", "Missed period", "Other changes"] },
+    { id: "duration", type: "choice", question: "How long has this been happening?", options: ["This cycle only", "A few months", "6 months or more"] },
+    { id: "severity", type: "slider", question: "How much discomfort does this cause, from 0 to 10?" },
   ],
   // AYUSH: all 15 Trividha/Dashavidha Pariksha parameters, rephrased for patients.
   ayush: [

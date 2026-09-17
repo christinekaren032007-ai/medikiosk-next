@@ -1,4 +1,4 @@
-import { ClinicalHistory, FamilyHistoryEntry, FollowUpQA } from "./clinical";
+import { AyushAssessment, ClinicalHistory, FamilyHistoryEntry, FollowUpQA } from "./clinical";
 import { DocumentRecord, TimelineEvent } from "./document";
 import { AISummary, RedFlag, DoctorReview, Consultation } from "./ai";
 
@@ -38,6 +38,9 @@ export interface DraftPatient extends Patient {
   familyHistory?: FamilyHistoryEntry[];
   noFamilyHistory?: boolean;
   aiFollowUp?: FollowUpQA[];
+  ayushAssessment?: AyushAssessment;
+  returningPatient?: boolean;
+  previousRecordUsed?: boolean;
 }
 
 export interface PatientRecord extends Patient {

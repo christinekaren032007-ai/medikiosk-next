@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse, unstable_after as after } from "next/server";
 import { supabaseServer } from "@/lib/supabase/server";
 import { buildSummary } from "@/lib/ai/summaryEngine";
-import { evaluateRedFlag } from "@/lib/ai/redFlagEngine";
 import { getClinicalNarrative } from "@/lib/ai/gemini";
 import { uid, nextToken } from "@/lib/utils/id";
 import { PatientRecord } from "@/types/patient";
@@ -27,9 +26,11 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     familyHistory: draft.familyHistory || [],
     noFamilyHistory: draft.noFamilyHistory || false,
     aiFollowUp: draft.aiFollowUp || [],
+    ayushAssessment: draft.ayushAssessment || undefined,
+    returningPatient: draft.returningPatient || false,
+    previousRecordUsed: draft.previousRecordUsed || false,
   };
   const summary = buildSummary(history, draft.documents);
-  const redFlag = evaluateRedFlag(draft.chiefComplaintCategory, draft.answers);
 
   const { count } = await supabaseServer.from("patients").select("*", { count: "exact", head: true });
   const token = nextToken(count || 0);
@@ -50,10 +51,10 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       { id: uid(), year: "Today", label: "Intake completed at kiosk" },
     ],
     summary,
-    redFlag,
+    redFlag: { triggered: false, reason: null },
     doctorReview: { confirmed: false, edited: false, reviewer: null, timestamp: null },
     consent: { granted: true, timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), consentTextVersion: "v1" },
-    priority: redFlag.triggered ? "high" : "normal",
+    priority: "normal",
     aiStatus: "ready",
     status: "Waiting",
     createdAt: new Date().toISOString(),
@@ -85,5 +86,5 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     }
   });
 
-  return NextResponse.json({ token });
+  return NextResponse.json({ token, patientId: record.id });
 }

@@ -10,13 +10,12 @@ import { useMediKioskStore } from "@/lib/data/store";
 import { getFlow } from "@/lib/ai/historyEngine";
 import { t } from "@/lib/i18n/translations";
 
-const STEPS = ["Identify", "Consent", "History", "Documents", "Review", "Complete"];
+const STEPS = ["Visit", "Consent", "Records", "Complaint", "Intake", "Documents", "Review", "Complete"];
 
 export default function ReviewPage() {
   const router = useRouter();
   const hydrated = useMediKioskStore((s) => s.hydrated);
   const draft = useMediKioskStore((s) => s.draft);
-  const ayushMode = useMediKioskStore((s) => s.ayushMode);
   const submitDraft = useMediKioskStore((s) => s.submitDraft);
   const lang = useMediKioskStore((s) => s.lang);
 
@@ -26,7 +25,7 @@ export default function ReviewPage() {
     return null;
   }
 
-  const flow = getFlow(ayushMode ? "ayush" : draft.chiefComplaintCategory);
+  const flow = getFlow(draft.chiefComplaintCategory);
 
   async function finish() {
     const token = await submitDraft();
@@ -35,10 +34,18 @@ export default function ReviewPage() {
 
   const sections: [string, string][] = [
     ["Personal Information", draft.name === "Guest Patient" ? "Guest patient" : `${draft.name}, ${draft.age} yrs, ${draft.gender}`],
+    ["Visit Type", draft.returningPatient ? `Returning patient${draft.previousRecordUsed ? " — using previous records (demo)" : " — previous records not used"}` : "First visit"],
     ["Chief Complaint", draft.chiefComplaintLabel],
     ...flow
       .filter((f) => draft.answers[f.id] !== undefined)
       .map((f): [string, string] => [f.question.split("?")[0], Array.isArray(draft.answers[f.id]) ? (draft.answers[f.id] as string[]).join(", ") : String(draft.answers[f.id])]),
+    ...(draft.ayushAssessment
+      ? ([
+          ["AYUSH — Darshana (observed)", draft.ayushAssessment.darshana.length ? draft.ayushAssessment.darshana.join(", ") : "Nothing unusual noticed"],
+          ["AYUSH — Sparshana (touch)", draft.ayushAssessment.sparshana || "Not reported"],
+          ...(draft.ayushAssessment.prashna ? [["AYUSH — Additional notes", draft.ayushAssessment.prashna]] : []),
+        ] as [string, string][])
+      : []),
     ["Uploaded Documents", draft.documents.length ? draft.documents[0].documentType : "None uploaded"],
   ];
 
@@ -51,7 +58,7 @@ export default function ReviewPage() {
             <div className="font-serif-display text-2xl font-semibold text-teal-900">Rapha</div>
             <div className="text-xs text-stone-500">Clinical Intake Assistant</div>
           </div>
-          <ProgressSteps steps={STEPS} activeIndex={4} />
+          <ProgressSteps steps={STEPS} activeIndex={6} />
         </div>
 
         <Card className="p-8">

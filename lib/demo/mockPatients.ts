@@ -3,7 +3,6 @@ import { ClinicalHistory } from "@/types/clinical";
 import { CHIEF_COMPLAINTS } from "@/lib/ai/historyEngine";
 import { mockExtractDocument } from "@/lib/ai/documentEngine";
 import { buildSummary } from "@/lib/ai/summaryEngine";
-import { evaluateRedFlag } from "@/lib/ai/redFlagEngine";
 import { uid } from "@/lib/utils/id";
 import { DocumentRecord, TimelineEvent } from "@/types/document";
 
@@ -18,7 +17,6 @@ function makeRecord(
 ): PatientRecord {
   const documents: DocumentRecord[] = withDoc ? [{ ...mockExtractDocument(history.chiefComplaintCategory), confirmed: true }] : [];
   const summary = buildSummary(history, documents);
-  const redFlag = evaluateRedFlag(history.chiefComplaintCategory, history.answers);
   return {
     id: uid(),
     name,
@@ -34,10 +32,10 @@ function makeRecord(
       ...extraTimeline,
     ],
     summary,
-    redFlag,
+    redFlag: { triggered: false, reason: null },
     doctorReview: { confirmed: false, edited: false, reviewer: null, timestamp: null },
     consent: { granted: true, timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), consentTextVersion: "v1" },
-    priority: redFlag.triggered ? "high" : "normal",
+    priority: "normal",
     aiStatus: "ready",
     status: "Waiting",
     createdAt: new Date().toISOString(),

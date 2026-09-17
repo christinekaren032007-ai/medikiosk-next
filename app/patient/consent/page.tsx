@@ -10,13 +10,13 @@ import FloatingNav from "@/components/shared/FloatingNav";
 import { useMediKioskStore } from "@/lib/data/store";
 import { t } from "@/lib/i18n/translations";
 
-const STEPS = ["Identify", "Consent", "History", "Documents", "Review", "Complete"];
+const STEPS = ["Visit", "Consent", "Records", "Complaint", "Intake", "Documents", "Review", "Complete"];
 
 export default function ConsentPage() {
   const router = useRouter();
   const lang = useMediKioskStore((s) => s.lang);
   const hydrated = useMediKioskStore((s) => s.hydrated);
-  const draft = useMediKioskStore((s) => s.draft);
+  const visitType = useMediKioskStore((s) => s.visitType);
   const [audioPlaying, setAudioPlaying] = useState(false);
   const [declined, setDeclined] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>();
@@ -28,9 +28,13 @@ export default function ConsentPage() {
   }
 
   if (!hydrated) return null;
-  if (!draft) {
+  if (!visitType) {
     router.replace("/patient");
     return null;
+  }
+
+  function agree() {
+    router.push(visitType === "returning" ? "/patient/records" : "/patient/complaint");
   }
 
   return (
@@ -47,9 +51,14 @@ export default function ConsentPage() {
 
         <Card className="p-8">
           <h2 className="font-serif-display text-xl font-semibold text-teal-900 mb-3">Your Information & Privacy</h2>
-          <p className="text-sm text-stone-600 mb-4 leading-relaxed">
-            We will ask about your health and allow you to upload previous medical documents. This information will be used to prepare your medical history for your doctor.
+          <p className="text-sm text-stone-600 mb-3 leading-relaxed">
+            We'll ask about your health and, with your permission, use relevant previous health information to prepare a structured case summary for your doctor. Rapha does not keep an independent medical record of you — it only prepares this summary for today's visit.
           </p>
+          {visitType === "returning" && (
+            <p className="text-sm text-stone-600 mb-4 leading-relaxed">
+              Since you've visited before, we can use relevant previous information from your ABHA-linked health record (simulated for this demo) to avoid repeating questions — only if you agree below.
+            </p>
+          )}
           <button onClick={toggleAudio} className="flex items-center gap-2 text-sm text-teal-700 font-semibold mb-6">
             <Volume2 size={16} className={audioPlaying ? "animate-pulse" : ""} /> Listen to explanation
           </button>
@@ -66,13 +75,13 @@ export default function ConsentPage() {
 
           {declined && (
             <div className="mb-4 p-3 rounded-xl bg-rose-50 text-rose-700 text-sm">
-              We're unable to prepare your history without consent. You can still see a staff member directly, or tap "I Agree" if you change your mind.
+              We're unable to prepare your case summary without consent. You can still see a staff member directly, or tap "I Agree" if you change your mind.
             </div>
           )}
 
           <div className="grid sm:grid-cols-2 gap-3">
             <Button variant="secondary" onClick={() => setDeclined(true)}>{t(lang, "disagree")}</Button>
-            <Button onClick={() => router.push("/patient/history")}>{t(lang, "agree")}</Button>
+            <Button onClick={agree}>{t(lang, "agree")}</Button>
           </div>
         </Card>
       </div>

@@ -9,7 +9,7 @@ import { CHIEF_COMPLAINTS } from "@/lib/ai/historyEngine";
  * draft requiring physician review — never presented as a diagnosis.
  */
 export function buildSummary(history: ClinicalHistory, documents: DocumentRecord[]): AISummary {
-  const { chiefComplaintCategory: category, answers } = history;
+  const { chiefComplaintCategory: category, chiefComplaintLabel, answers } = history;
   const doc = documents[0];
 
   let hpi = "Not reported.";
@@ -34,10 +34,20 @@ export function buildSummary(history: ClinicalHistory, documents: DocumentRecord
   } else if (category === "breathlessness") {
     const assoc = (answers.associated as string[] | undefined)?.filter((a) => a !== "None") || [];
     hpi = `Patient reports breathlessness since ${String(answers.onset).toLowerCase()}, most noticeable ${String(answers.trigger).toLowerCase()}, severity ${answers.severity}/10${assoc.length ? `, associated with ${assoc.join(", ").toLowerCase()}` : ""}.`;
-  } else if (answers.description) {
-    const onset = answers.onset ? ` beginning ${String(answers.onset).toLowerCase()}` : "";
+  } else {
+    const onset = (answers.onset as string | undefined) ? ` beginning ${String(answers.onset).toLowerCase()}` : "";
     const severity = answers.severity !== undefined ? `, severity ${answers.severity}/10` : "";
-    hpi = `Patient reports: "${String(answers.description)}"${onset}${severity}.`;
+    if (answers.description) {
+      hpi = `Patient reports: "${String(answers.description)}"${onset}${severity}.`;
+    } else {
+      const otherAnswers = Object.entries(answers)
+        .filter(([k]) => !["onset", "severity"].includes(k))
+        .map(([, v]) => (Array.isArray(v) ? v.join(", ") : String(v)))
+        .filter((v) => v && v !== "None");
+      hpi = `Patient presents with ${chiefComplaintLabel.toLowerCase()}${onset}${severity}${
+        otherAnswers.length ? `. Reported: ${otherAnswers.join(", ").toLowerCase()}` : ""
+      }.`;
+    }
   }
 
   const pastHistory = doc ? doc.fields.find((f) => f.key === "Diagnosis")?.value || "Not reported by patient." : "Not reported by patient.";
