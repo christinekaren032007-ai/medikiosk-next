@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import {
   Stethoscope, PlayCircle, LayoutDashboard, Sparkles, Mic, FileText,
-  ClipboardList, AlertTriangle, ShieldCheck, Globe, Leaf, ArrowRight, BarChart3,
+  ClipboardList, ShieldCheck, Globe, Leaf, ArrowRight, BarChart3,
 } from "lucide-react";
 import { Card } from "@/components/shared/Primitives";
 import Button from "@/components/shared/Button";
@@ -16,7 +16,6 @@ const FEATURES = [
   { icon: Mic, label: "Voice + Touch Input", desc: "Speak naturally or tap through — patient's choice." },
   { icon: FileText, label: "Medical Document Intelligence", desc: "Prior prescriptions and reports digitized on the spot." },
   { icon: ClipboardList, label: "AI Clinical Summary", desc: "Physician-ready draft, always reviewed by a doctor." },
-  { icon: AlertTriangle, label: "Red-Flag Detection", desc: "Flags possible emergencies for immediate staff attention." },
   { icon: Globe, label: "Multilingual Support", desc: "English, Tamil, and Hindi at the kiosk." },
   { icon: Leaf, label: "AYUSH Mode", desc: "Trividha & Dashavidha Pariksha, patient-friendly." },
   { icon: ShieldCheck, label: "ABDM/FHIR Ready", desc: "Architecture designed for national health interoperability." },

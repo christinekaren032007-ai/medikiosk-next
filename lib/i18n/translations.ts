@@ -3,8 +3,8 @@ export type Lang = "en" | "ta" | "hi";
 export const translations: Record<Lang, Record<string, string>> = {
   en: {
     heroTitle: "Rapha",
-    heroSub: "AI-Powered Clinical Intake for Faster, Better Healthcare",
-    heroDesc: "Capture comprehensive patient history, digitize medical records, and deliver a structured clinical summary to doctors before consultation.",
+    heroSub: "AI-Powered AYUSH Clinical Case-Taking",
+    heroDesc: "Capture structured patient history, relevant previous records, and current symptoms to generate a concise AI-assisted case summary for the physician.",
     startPatient: "Start Patient Demo",
     openDoctor: "Open Doctor Dashboard",
     welcomeTitle: "Welcome to Rapha",
@@ -25,8 +25,8 @@ export const translations: Record<Lang, Record<string, string>> = {
   },
   ta: {
     heroTitle: "ராஃபா",
-    heroSub: "விரைவான, சிறந்த சுகாதாரத்திற்கான AI மருத்துவ தகவல் சேகரிப்பு",
-    heroDesc: "நோயாளியின் முழு மருத்துவ வரலாற்றைப் பதிவு செய்து, ஆவணங்களை டிஜிட்டல் மயமாக்கி, மருத்துவரிடம் ஒழுங்கமைக்கப்பட்ட சுருக்கத்தை வழங்குகிறோம்.",
+    heroSub: "AI-இயங்கும் ஆயுஷ் மருத்துவ வழக்கு பதிவு",
+    heroDesc: "நோயாளியின் ஒழுங்கமைக்கப்பட்ட வரலாறு, தொடர்புடைய முந்தைய பதிவுகள் மற்றும் தற்போதைய அறிகுறிகளைப் பதிவு செய்து, மருத்துவருக்கான சுருக்கமான AI-உதவி வழக்கு சுருக்கத்தை உருவாக்குகிறோம்.",
     startPatient: "நோயாளி டெமோவைத் தொடங்கு",
     openDoctor: "மருத்துவர் டாஷ்போர்டைத் திற",
     welcomeTitle: "ராஃபாவிற்கு வரவேற்கிறோம்",
@@ -47,8 +47,8 @@ export const translations: Record<Lang, Record<string, string>> = {
   },
   hi: {
     heroTitle: "राफा",
-    heroSub: "तेज़, बेहतर स्वास्थ्य सेवा के लिए AI क्लिनिकल इनटेक",
-    heroDesc: "मरीज़ का पूरा मेडिकल इतिहास दर्ज करें, पुराने दस्तावेज़ डिजिटाइज़ करें, और डॉक्टर के लिए एक संरचित सारांश तैयार करें।",
+    heroSub: "AI-संचालित आयुष क्लिनिकल केस-टेकिंग",
+    heroDesc: "मरीज़ का संरचित इतिहास, प्रासंगिक पुराने रिकॉर्ड और वर्तमान लक्षण दर्ज करें ताकि डॉक्टर के लिए एक संक्षिप्त AI-सहायता प्राप्त केस सारांश तैयार किया जा सके।",
     startPatient: "मरीज़ डेमो शुरू करें",
     openDoctor: "डॉक्टर डैशबोर्ड खोलें",
     welcomeTitle: "राफा में आपका स्वागत है",
