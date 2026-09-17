@@ -4,6 +4,12 @@ import { getCaseSummary } from "@/lib/ai/gemini";
 import { findOrCreatePatientId, insertConsultationTree, markAiSummaryReady } from "@/lib/server/db";
 
 export const dynamic = "force-dynamic";
+// The unstable_after() callback below runs the Gemini case-summary call
+// (~18s) after the response is sent, but it still counts against this
+// function's execution budget — without extending it, Vercel can kill the
+// function mid-background-job on Hobby's 10s default, leaving ai_status
+// stuck at "processing" forever instead of ever reaching "ready".
+export const maxDuration = 30;
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

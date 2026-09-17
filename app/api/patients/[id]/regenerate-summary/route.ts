@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { regenerateAiSummary, fetchConsultationRecord } from "@/lib/server/db";
 
 export const dynamic = "force-dynamic";
+// regenerateAiSummary() makes a synchronous Gemini call (~18s) awaited
+// before responding — see app/api/ai/follow-up/route.ts for why this must
+// exceed Vercel's default 10s Hobby-plan function timeout.
+export const maxDuration = 30;
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
