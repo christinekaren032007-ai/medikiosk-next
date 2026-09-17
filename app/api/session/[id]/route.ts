@@ -10,8 +10,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (body.lang !== undefined) patch.lang = body.lang;
   if (body.ayushMode !== undefined) patch.ayush_mode = body.ayushMode;
 
-  const { data, error } = await supabaseServer.from("kiosk_sessions").update(patch).eq("id", id).select().single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  try {
+    const { data, error } = await supabaseServer.from("kiosk_sessions").update(patch).eq("id", id).select().single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  return NextResponse.json({ lang: data.lang, ayushMode: data.ayush_mode });
+    return NextResponse.json({ lang: data.lang, ayushMode: data.ayush_mode });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : "unknown error" }, { status: 500 });
+  }
 }

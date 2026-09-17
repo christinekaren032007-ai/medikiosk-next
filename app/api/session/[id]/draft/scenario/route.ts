@@ -28,11 +28,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   };
   const ayushMode = key === "ayush";
 
-  const { error } = await supabaseServer
-    .from("kiosk_sessions")
-    .update({ draft, ayush_mode: ayushMode, updated_at: new Date().toISOString() })
-    .eq("id", id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  try {
+    const { error } = await supabaseServer
+      .from("kiosk_sessions")
+      .update({ draft, ayush_mode: ayushMode, updated_at: new Date().toISOString() })
+      .eq("id", id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  return NextResponse.json({ draft, ayushMode });
+    return NextResponse.json({ draft, ayushMode });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : "unknown error" }, { status: 500 });
+  }
 }

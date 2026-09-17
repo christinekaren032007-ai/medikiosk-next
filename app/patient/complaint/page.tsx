@@ -26,7 +26,7 @@ export default function ComplaintPage() {
 
   async function pickComplaint(category: ComplaintCategory) {
     await startPatient(category);
-    router.push("/patient/history");
+    if (useMediKioskStore.getState().draft) router.push("/patient/history");
   }
 
   const options = PATIENT_COMPLAINT_OPTIONS.map((key) => CHIEF_COMPLAINTS.find((c) => c.key === key)!);

@@ -5,9 +5,6 @@ import { AyushAssessment, ComplaintCategory, FamilyHistoryEntry, FollowUpQA, Fol
 import { DraftPatient, PatientRecord } from "@/types/patient";
 import { Consultation } from "@/types/ai";
 import { Lang } from "@/lib/i18n/translations";
-import { CHIEF_COMPLAINTS } from "@/lib/ai/historyEngine";
-import { mockExtractDocument } from "@/lib/ai/documentEngine";
-import { uid } from "@/lib/utils/id";
 
 export type VisitType = "new" | "returning" | null;
 export interface PendingIdentity {
@@ -22,38 +19,27 @@ async function api<T = any>(url: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
   });
-  if (!res.ok) throw new Error(`${init?.method || "GET"} ${url} failed: ${res.status}`);
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const body = await res.json();
+      detail = body?.error ? `: ${body.error}` : "";
+    } catch {
+      // response wasn't JSON — fall through with no extra detail
+    }
+    throw new Error(`Server error (${res.status}) on ${init?.method || "GET"} ${url}${detail}`);
+  }
   return res.json();
-}
-
-/**
- * Builds the same shape the server would have created for a new draft,
- * entirely client-side. Used as a fallback so the kiosk demo can run start
- * to finish without a reachable backend — never as a substitute when the
- * backend IS available.
- */
-function buildLocalDraft(category: ComplaintCategory, identity: PendingIdentity | null): DraftPatient {
-  return {
-    id: uid(),
-    name: identity?.name ?? "Guest Patient",
-    age: identity?.age ?? "—",
-    gender: identity?.gender ?? "—",
-    abhaId: identity?.abhaId ?? null,
-    chiefComplaintCategory: category,
-    chiefComplaintLabel: CHIEF_COMPLAINTS.find((c) => c.key === category)?.label || category,
-    answers: {},
-    documents: [],
-    docProcessingStage: null,
-  };
 }
 
 interface MediKioskState {
   sessionId: string | null;
   hydrated: boolean;
   initError: string | null;
-  // True once any step of the demo has had to fall back to local,
-  // clearly-labelled demo data because the backend was unreachable.
-  offlineMode: boolean;
+  // Set whenever a Supabase-backed call fails, so the UI can show a visible
+  // error instead of silently substituting fake data. Cleared on the next
+  // successful call.
+  backendError: string | null;
   lang: Lang;
   ayushMode: boolean;
   queue: PatientRecord[];
@@ -102,7 +88,7 @@ export const useMediKioskStore = create<MediKioskState>()((set, get) => ({
   sessionId: null,
   hydrated: false,
   initError: null,
-  offlineMode: false,
+  backendError: null,
   lang: "en",
   ayushMode: false,
   queue: [],
@@ -173,11 +159,8 @@ export const useMediKioskStore = create<MediKioskState>()((set, get) => ({
         }
       : null;
 
-    // Never let a broken/unreachable backend stall the demo on a dead
-    // button click — fall back to an equivalent local draft so the patient
-    // flow always continues, clearly marked as offline/demo data.
     if (!sessionId) {
-      set({ draft: buildLocalDraft(category, pendingIdentity), offlineMode: true });
+      set({ backendError: "No active session — could not start a new visit." });
       return;
     }
     try {
@@ -193,9 +176,9 @@ export const useMediKioskStore = create<MediKioskState>()((set, get) => ({
         });
         draft = patched.draft;
       }
-      set({ draft });
-    } catch {
-      set({ draft: { ...buildLocalDraft(category, pendingIdentity), ...identityPatch }, offlineMode: true });
+      set({ draft, backendError: null });
+    } catch (err) {
+      set({ backendError: err instanceof Error ? err.message : "Could not start the visit — server unreachable." });
     }
   },
 
@@ -217,8 +200,9 @@ export const useMediKioskStore = create<MediKioskState>()((set, get) => ({
     if (!sessionId || !draft) return;
     try {
       await api(`/api/session/${sessionId}/draft`, { method: "PATCH", body: JSON.stringify({ answers: draft.answers }) });
-    } catch {
-      set({ offlineMode: true });
+      set({ backendError: null });
+    } catch (err) {
+      set({ backendError: err instanceof Error ? err.message : "Could not save your answer — server unreachable." });
     }
   },
 
@@ -227,26 +211,25 @@ export const useMediKioskStore = create<MediKioskState>()((set, get) => ({
     if (!sessionId || !draft) return;
     try {
       const data = await api<{ draft: DraftPatient }>(`/api/session/${sessionId}/draft/finish-doc-processing`, { method: "POST" });
-      set({ draft: data.draft });
-    } catch {
-      set({ draft: { ...draft, documents: [mockExtractDocument(draft.chiefComplaintCategory)], docProcessingStage: "done" }, offlineMode: true });
+      set({ draft: data.draft, backendError: null });
+    } catch (err) {
+      set({ backendError: err instanceof Error ? err.message : "Could not process the uploaded document — server unreachable." });
     }
   },
 
   submitDraft: async () => {
     const sessionId = get().sessionId;
-    if (!sessionId) return "";
+    if (!sessionId) {
+      set({ backendError: "No active session — could not submit the visit." });
+      return "";
+    }
     try {
       const data = await api<{ token: string; consultationId: string }>(`/api/session/${sessionId}/submit`, { method: "POST" });
-      set({ draft: null, lastToken: data.token, lastConsultationId: data.consultationId, visitType: null, pendingIdentity: null, previousRecordUsed: false });
+      set({ draft: null, lastToken: data.token, lastConsultationId: data.consultationId, visitType: null, pendingIdentity: null, previousRecordUsed: false, backendError: null });
       return data.token;
-    } catch {
-      // No reachable database to actually queue the patient for a doctor —
-      // but the patient's own demo must still be able to finish. The
-      // DEMO- prefix keeps this visibly distinct from a real queue token.
-      const demoToken = `DEMO-${uid().slice(0, 4).toUpperCase()}`;
-      set({ draft: null, lastToken: demoToken, lastConsultationId: null, visitType: null, pendingIdentity: null, previousRecordUsed: false, offlineMode: true });
-      return demoToken;
+    } catch (err) {
+      set({ backendError: err instanceof Error ? err.message : "Could not submit the visit — server unreachable. Nothing was queued for the doctor." });
+      return "";
     }
   },
 
@@ -256,8 +239,9 @@ export const useMediKioskStore = create<MediKioskState>()((set, get) => ({
     if (sessionId) {
       try {
         await api(`/api/session/${sessionId}/draft`, { method: "DELETE" });
-      } catch {
-        set({ offlineMode: true });
+        set({ backendError: null });
+      } catch (err) {
+        set({ backendError: err instanceof Error ? err.message : "Could not reset the visit — server unreachable." });
       }
     }
   },
@@ -268,8 +252,9 @@ export const useMediKioskStore = create<MediKioskState>()((set, get) => ({
     if (sessionId) {
       try {
         await api(`/api/session/${sessionId}/draft`, { method: "PATCH", body: JSON.stringify({ familyHistory: entries, noFamilyHistory }) });
-      } catch {
-        set({ offlineMode: true });
+        set({ backendError: null });
+      } catch (err) {
+        set({ backendError: err instanceof Error ? err.message : "Could not save family history — server unreachable." });
       }
     }
   },
@@ -280,8 +265,9 @@ export const useMediKioskStore = create<MediKioskState>()((set, get) => ({
     if (sessionId) {
       try {
         await api(`/api/session/${sessionId}/draft`, { method: "PATCH", body: JSON.stringify({ ayushAssessment: assessment }) });
-      } catch {
-        set({ offlineMode: true });
+        set({ backendError: null });
+      } catch (err) {
+        set({ backendError: err instanceof Error ? err.message : "Could not save the AYUSH assessment — server unreachable." });
       }
     }
   },
@@ -315,8 +301,9 @@ export const useMediKioskStore = create<MediKioskState>()((set, get) => ({
     if (sessionId) {
       try {
         await api(`/api/session/${sessionId}/draft`, { method: "PATCH", body: JSON.stringify({ aiFollowUp }) });
-      } catch {
-        set({ offlineMode: true });
+        set({ backendError: null });
+      } catch (err) {
+        set({ backendError: err instanceof Error ? err.message : "Could not save your answer — server unreachable." });
       }
     }
   },
@@ -366,7 +353,7 @@ export const useMediKioskStore = create<MediKioskState>()((set, get) => ({
       visitType: null,
       pendingIdentity: null,
       previousRecordUsed: false,
-      offlineMode: false,
+      backendError: null,
     });
   },
 }));

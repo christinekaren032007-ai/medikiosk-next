@@ -31,13 +31,19 @@ export default function ReviewPage() {
   const flow = getFlow(draft.chiefComplaintCategory);
 
   async function finish() {
-    // submitDraft() clears the draft on completion, which would otherwise
+    // submitDraft() clears the draft only on success, which would otherwise
     // make this component's own `!draft` guard above fire a redirect back
     // to "/patient" in a race with the router.push below — this flag holds
     // that off until navigation to Complete has actually been requested.
+    // On failure the draft is left untouched, backendError is set by the
+    // store, and we drop the flag so the patient can retry.
     setFinishing(true);
     const token = await submitDraft();
-    if (token) router.push("/patient/complete");
+    if (token) {
+      router.push("/patient/complete");
+    } else {
+      setFinishing(false);
+    }
   }
 
   const sections: [string, string][] = [

@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter, usePathname } from "next/navigation";
+import BackendErrorBanner from "@/components/shared/BackendErrorBanner";
 
 export default function FloatingNav() {
   const router = useRouter();
@@ -9,6 +10,8 @@ export default function FloatingNav() {
   const inDoctor = pathname?.startsWith("/doctor");
 
   return (
+    <>
+    <BackendErrorBanner />
     <div className="fixed top-4 right-4 z-50 flex gap-2">
       <button onClick={() => router.push("/")} className="bg-white/95 backdrop-blur border border-stone-200 shadow-sm rounded-full px-3 py-2 text-xs font-semibold text-stone-600 hover:text-teal-700">
         Home
@@ -26,5 +29,6 @@ export default function FloatingNav() {
         Doctor Dashboard
       </button>
     </div>
+    </>
   );
 }
