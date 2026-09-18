@@ -137,8 +137,12 @@ export default function HistoryPage() {
     setFollowUpAnswer("");
     setFollowUpMultiSelected([]);
     const nextIndex = followUpIndex + 1;
+    // Always advance the index, even past the end of the queue — followUpQuestion
+    // is derived from followUpQueue[followUpIndex], so leaving the index pointing
+    // at the last question here would keep re-rendering it forever instead of
+    // reaching the "done" screen below.
+    setFollowUpIndex(nextIndex);
     if (nextIndex >= followUpQueue.length) setFollowUpDone(true);
-    else setFollowUpIndex(nextIndex);
   }
 
   function startVoice() {
