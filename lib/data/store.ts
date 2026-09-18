@@ -14,11 +14,30 @@ export interface PendingIdentity {
   abhaId: string | null;
 }
 
+const API_TIMEOUT_MS = 20000;
+
+// fetch() has no built-in timeout — on a flaky connection (e.g. a mobile
+// network) a request can hang indefinitely, never resolving or rejecting,
+// which would leave the UI stuck forever with no visible error. This
+// guarantees every call either succeeds or fails within API_TIMEOUT_MS.
 async function api<T = any>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      ...init,
+      headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error(`Request timed out on ${init?.method || "GET"} ${url}`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
   if (!res.ok) {
     let detail = "";
     try {
