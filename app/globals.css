@@ -16,3 +16,10 @@ html, body {
 input[type="range"] {
   accent-color: #0f766e; /* teal-700 */
 }
+
+/* This is a touchscreen kiosk app — without this, some touch devices add a
+   tap-vs-double-tap-to-zoom delay/ambiguity to buttons, which can make a
+   single tap feel like it does nothing. */
+button, [role="button"] {
+  touch-action: manipulation;
+}
